@@ -1,0 +1,5 @@
+.idea/
+demo/
+root/
+venv/
+*.exe
