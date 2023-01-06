@@ -3,3 +3,4 @@ demo/
 root/
 venv/
 *.exe
+*.zip
