@@ -3,37 +3,46 @@
     can help developers work.
 """
 
-import PySimpleGUI as sg
-import subprocess
-import copy
 import os
+import copy
 import winshell
+import subprocess
+import PySimpleGUI as sg
 from psgtray import SystemTray
 
 
-def make_window(root):
-    sg.theme('dark green 7')
+def set_env(key, value):
+    if os.getenv(key) != value:
+        command = f"start /b setx {key} {value}".format(key=key, value=value)
+        print(command)
+        os.system(command)
 
+
+def make_window(root, theme):
+    print(root, theme)
+    set_env('MY_ROOT', root)
+    set_env('MY_THEME', theme)
+    sg.theme(theme)
     menu = [['编辑', ['管理标签', '添加标签']],
             ['设置', ['打开目录', '选择主题']],
             ['帮助', ['关于']]]
     layout = [[sg.MenubarCustom(menu)]]
     tabs = []
     keys = []
-    right_click_menu = [['右击菜单'], ['修改项', '删除项']]
+    right_click_menu = [['右击菜单'], ['修改项', '删除项', '打开所在位置']]
     if not os.path.exists(root):
         root = os.getcwd()
     for sub_root in os.listdir(root):
         if os.path.isfile(os.path.join(root, sub_root)):
             continue
-        print(sub_root)
+        # print(sub_root)
         sub_layout = []
         row_layout = []
         items = os.listdir(os.path.join(root, sub_root))
         for i in range(len(items)):
             if os.path.isfile(os.path.join(root, sub_root, items[i])):
                 continue
-            print(items[i])
+            # print(items[i])
             key = os.path.join(sub_root, items[i])
             keys.append(key)
             row_layout.append(sg.Button(items[i], key=key, size=(12, 2), mouseover_colors='blue',
@@ -53,7 +62,35 @@ def make_window(root):
         # print(key)
         window[key].bind("<Button-3>", ' RightClick')
         window[key].bind("<Button-1>", ' LeftClick')
-    return window
+
+    menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
+    tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手')
+    return window, tray
+
+
+def upate_window(window, tray, root, theme):
+    window.close()
+    tray.close()
+    return make_window(root, theme)
+
+
+def set_theme(theme):
+    cur_theme = theme
+    layout = [[sg.Text("See how elements look under different themes by choosing a different theme here!")],
+              [sg.Listbox(values=sg.theme_list(), default_values=[cur_theme], size=(20, 12), key='THEME_LISTBOX',
+                          enable_events=True)],
+              [sg.Button("确定"), sg.Button('取消')]]
+    window = sg.Window('设置主题', layout)
+    while True:
+        event, values = window.read()
+        if event == sg.WIN_CLOSED or event == '取消':
+            break
+        elif event == '确定':
+            cur_theme = values['THEME_LISTBOX'][0]
+            print("[LOG] User Chose Theme: " + str(cur_theme))
+            break
+    window.close()
+    return cur_theme
 
 
 def add_tab(root):
@@ -96,7 +133,7 @@ def mod_tab(root, current_tab):
 
 
 def rmv_tab(root, tab):
-    result = sg.popup("确认是否删除" + tab + "?",  button_type=sg.POPUP_BUTTONS_YES_NO)
+    result = sg.popup("确认是否删除" + tab + "?", button_type=sg.POPUP_BUTTONS_YES_NO)
     if result:
         os.rmdir(os.path.join(root, tab))
     return result
@@ -121,7 +158,7 @@ def add_item(root, tab):
             # print('item_path', item_path)
             if not os.path.exists(item_path):
                 os.mkdir(item_path)
-            link_path = os.path.join(item_path, item+'.lnk')
+            link_path = os.path.join(item_path, item + '.lnk')
             # print('link_path', link_path)
             winshell.CreateShortcut(Path=link_path, Target=target, Icon=(target, 0))
             sg.popup("成功添加一个项!", auto_close=True, auto_close_duration=1, keep_on_top=True)
@@ -161,7 +198,7 @@ def mod_item(root, item):
 
 
 def rmv_item(root, item):
-    result = sg.popup("确认是否删除" + item + "?",  button_type=sg.POPUP_BUTTONS_YES_NO)
+    result = sg.popup("确认是否删除" + item + "?", button_type=sg.POPUP_BUTTONS_YES_NO)
     if result:
         os.remove(os.path.join(root, item))
     return result
@@ -185,10 +222,17 @@ def run_item(root, item):
 
 
 if __name__ == '__main__':
-    root = os.path.join(os.getcwd(), 'root')
-    window = make_window(root)
-    menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
-    tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手')
+    try:
+        root = os.environ['MY_ROOT']
+    except:
+        root = os.path.join(os.getcwd(), 'root')
+
+    try:
+        theme = os.environ['MY_THEME']
+    except:
+        theme = 'DarkGreen7'
+
+    window, tray = make_window(root, theme)
 
     while True:
         event, values = window.read()
@@ -210,42 +254,40 @@ if __name__ == '__main__':
         elif event == '打开目录':
             folder = sg.popup_get_folder('Choose your folder', keep_on_top=True)
             if folder:
-                print("[LOG] User chose file: " + str(folder))
                 root = str(folder)
-                window.close()
-                window = make_window(root)
-        elif event == '管理标签':
-            pass
+                window, tray = upate_window(window, tray, root, theme)
+        elif event == '选择主题':
+            new_theme = set_theme(theme)
+            if theme != new_theme:
+                theme = new_theme
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '添加标签':
             if add_tab(root):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '修改标签':
             if mod_tab(root, values[0]):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '删除标签':
             if rmv_tab(root, values[0]):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '刷新':
-            window.close()
-            window = make_window(root)
+            window, tray = upate_window(window, tray, root, theme)
         elif event == '添加项':
             print(event, values)
             if add_item(root, values[0]):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '修改项':
             item = window.find_element_with_focus()
             if mod_item(root, item.key):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
         elif event == '删除项':
             item = window.find_element_with_focus()
             if rmv_item(root, item.key):
-                window.close()
-                window = make_window(root)
+                window, tray = upate_window(window, tray, root, theme)
+        elif event == '打开所在位置':
+            item = window.find_element_with_focus()
+            cur_path = str(os.path.join(root, item.key))
+            os.startfile(cur_path)
         elif event.endswith('Click'):
             key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
             window[key].set_focus()
