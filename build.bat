@@ -1,7 +1,7 @@
 @echo off
-pyinstaller -w -F main.py -n work_helper
-copy dist\work_helper.exe .
-del /S /Q work_helper.spec
+pyinstaller -w -F main.py -n workhelper --icon workhelper.ico
+copy dist\workhelper.exe .
+del /S /Q workhelper.spec
 rd /S /Q dist
 rd /S /Q build
 echo build finished
