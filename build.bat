@@ -1,4 +1,7 @@
 @echo off
+pip freeze > requirements.txt
+echo refresh requirements info
+
 pyinstaller -w -F main.py -n workhelper --icon workhelper.ico
 copy dist\workhelper.exe .
 del /S /Q workhelper.spec

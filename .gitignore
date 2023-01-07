@@ -4,3 +4,4 @@ root/
 venv/
 *.exe
 *.zip
+*.spec
