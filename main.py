@@ -15,7 +15,7 @@ def set_env(key, value):
     if os.getenv(key) != value:
         command = f"start /b setx {key} {value}".format(key=key, value=value)
         print(command)
-        os.system(command)
+        os.popen(command)
 
 
 def make_window(root, theme):
