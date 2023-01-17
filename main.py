@@ -5,83 +5,91 @@
 
 import os
 import copy
+import shutil
+from math import ceil
 
 import click
 import winshell
-import subprocess
 import PySimpleGUI as sg
 from psgtray import SystemTray
+from contextlib import suppress
 
 
 def set_env(key, value):
     if os.getenv(key) != value:
-        command = f"start /b setx {key} {value}".format(key=key, value=value)
-        print(command)
+        command = f'start /b setx {key} {value}'.format(key=key, value=value)
         os.popen(command)
 
 
-def make_window(root, theme, tray):
-    print(root, theme)
+def init_window(root, theme, tray):
     set_env('MY_ROOT', root)
     set_env('MY_THEME', theme)
+
     sg.theme(theme)
     menu = [['编辑', ['管理标签', '添加标签']],
-            ['设置', ['打开目录', '选择主题']],
+            ['设置', ['打开目录', '选择主题', '自动更新']],
             ['帮助', ['关于']]]
     layout = [[sg.MenubarCustom(menu)]]
+    layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索')],
+    whole = '全部应用'
+    items_info = {whole: []}
+    for parent, directorys, _files in os.walk(root):
+        sub_root = parent.replace(root + os.path.sep, '')
+        if parent != root and sub_root.find(os.path.sep) == -1:
+            if parent not in items_info:
+                items_info[parent] = []
+            items_info[parent] += [os.path.join(parent, directory) for directory in directorys]
+            items_info[whole] += [os.path.join(parent, directory) for directory in directorys]
+
     tabs = []
     keys = []
-    right_click_menu = [['右击菜单'], ['修改项', '删除项', '打开所在位置']]
-    if not os.path.exists(root):
-        root = os.getcwd()
-    for sub_root in os.listdir(root):
-        if os.path.isfile(os.path.join(root, sub_root)):
-            continue
-        # print(sub_root)
-        sub_layout = []
+    max_num_per_row = max(ceil(len(items_info)/2), 4)
+    # print(max_num_per_row)
+    app_right_click_menu = [['右击菜单'], ['修改应用', '删除应用', '打开所在位置']]
+    tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加应用', '刷新']]
+    for tab, apps in items_info.items():
+        tab_name = os.path.basename(tab).ljust(4, ' ')
+        tab_key = tab
+        tab_layout = []
         row_layout = []
-        items = os.listdir(os.path.join(root, sub_root))
-        for i in range(len(items)):
-            if os.path.isfile(os.path.join(root, sub_root, items[i])):
-                continue
-            # print(items[i])
-            key = os.path.join(sub_root, items[i])
-            keys.append(key)
-            row_layout.append(sg.Button(items[i], key=key, size=(12, 2), mouseover_colors='blue',
-                                        enable_events=True, right_click_menu=right_click_menu))
-            if len(row_layout) == 4:
-                sub_layout.append(copy.deepcopy(row_layout))
+        for app in apps:
+            app_name = os.path.basename(app)
+            app_key = tab+'#'+app
+            button = sg.Button(app_name, tooltip=app_name, key=app_key, size=(12, 2), mouseover_colors='blue',
+                               enable_events=True, right_click_menu=app_right_click_menu)
+            row_layout.append(button)
+            if len(row_layout) == max_num_per_row:
+                tab_layout.append(copy.deepcopy(row_layout))
                 row_layout.clear()
+            keys.append(app_key)
         else:
             if len(row_layout) > 0:
-                sub_layout.append(copy.deepcopy(row_layout))
-        tabs.append(sg.Tab(sub_root, sub_layout, key=sub_root))
+                tab_layout.append(row_layout)
+        tabs.append(sg.Tab(tab_name[:4], tab_layout, key=tab_key, right_click_menu=tab_right_click_menu))
 
-    right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加项', '刷新']]
-    layout += [[sg.TabGroup([tabs], size=(460, 560), expand_x=True, expand_y=True, right_click_menu=right_click_menu)]]
+    layout += [[sg.TabGroup([tabs], expand_x=True, expand_y=True, right_click_menu=tab_right_click_menu)]]
     window = sg.Window('工作助手', layout, finalize=True, enable_close_attempted_event=True)
     for key in keys:
-        # print(key)
-        window[key].bind("<Button-3>", ' RightClick')
-        window[key].bind("<Button-1>", ' LeftClick')
-
+        window[key].bind('<Button-1>', ' LeftClick')
+        window[key].bind('<Button-3>', ' RightClick')
     menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
     sys_tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手') if tray else None
     return window, sys_tray
 
 
-def upate_window(window, tray, root, theme):
+def update_window(window, tray, root, theme):
+    if tray:
+        tray.close()
     window.close()
-    tray.close()
-    return make_window(root, theme)
+    return init_window(root, theme, tray)
 
 
 def set_theme(theme):
     cur_theme = theme
-    layout = [[sg.Text("See how elements look under different themes by choosing a different theme here!")],
+    layout = [[sg.Text('See how elements look under different themes by choosing a different theme here!')],
               [sg.Listbox(values=sg.theme_list(), default_values=[cur_theme], size=(20, 12), key='THEME_LISTBOX',
                           enable_events=True)],
-              [sg.Button("确定"), sg.Button('取消')]]
+              [sg.Button('确定'), sg.Button('取消')]]
     window = sg.Window('设置主题', layout)
     while True:
         event, values = window.read()
@@ -89,7 +97,7 @@ def set_theme(theme):
             break
         elif event == '确定':
             cur_theme = values['THEME_LISTBOX'][0]
-            print("[LOG] User Chose Theme: " + str(cur_theme))
+            print('[LOG] User Chose Theme: ' + str(cur_theme))
             break
     window.close()
     return cur_theme
@@ -108,7 +116,7 @@ def add_tab(root):
             new_tab = tab_window['NewTab'].get()
             print(new_tab)
             os.mkdir(os.path.join(root, new_tab))
-            sg.popup("You success to new a tab!", auto_close=True, auto_close_duration=1, keep_on_top=True)
+            sg.popup('You success to new a tab!', auto_close=True, auto_close_duration=1, keep_on_top=True)
             result = True
             break
     tab_window.close()
@@ -127,117 +135,116 @@ def mod_tab(root, current_tab):
         elif event == '确定':
             new_tab = tab_window['CurTab'].get()
             os.renames(os.path.join(root, current_tab), os.path.join(root, new_tab))
-            sg.popup("You success to new a tab!", auto_close=True, auto_close_duration=1, keep_on_top=True)
+            sg.popup('You success to new a tab!', auto_close=True, auto_close_duration=1, keep_on_top=True)
             result = True
             break
     tab_window.close()
     return result
 
 
-def rmv_tab(root, tab):
-    result = sg.popup("确认是否删除" + tab + "?", button_type=sg.POPUP_BUTTONS_YES_NO)
+def rmv_tab(tab_key):
+    tab_name = os.path.basename(tab_key)
+    tab_dir = tab_key
+    result = sg.popup('是否删除' + tab_name + '?', no_titlebar=True, keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
     if result:
-        os.rmdir(os.path.join(root, tab))
+        shutil.rmtree(tab_dir)
     return result
 
 
-def add_item(root, tab):
+def add_app(tab_key):
     result = False
-    layout = [[sg.Text('添加目标'), sg.Input(key='NewTarget'), sg.Button('浏览')],
-              [sg.Text('新添加项'), sg.Input(key='NewItem'), sg.Button('图标')],
+    tab_dir = tab_key
+    layout = [[sg.Text('添加目标'), sg.Input(key='TargetPath'), sg.Button('浏览')],
+              [sg.Text('添加应用'), sg.Input(key='AppName'), sg.Button('图标')],
               [sg.Button('确定'), sg.Button('取消')]]
-    window = sg.Window('添加项', layout, element_justification='right')
+    window = sg.Window('添加应用', layout, element_justification='right')
     while True:
         event, values = window.read()
         if event == sg.WIN_CLOSED or event == '取消':
             break
         elif event == '确定':
-            target = window['NewTarget'].get()
+            target = window['TargetPath'].get()
+            app_name = window['AppName'].get()
+            app_dir = os.path.join(tab_dir, app_name)
+            if not os.path.exists(app_dir):
+                os.mkdir(app_dir)
+            link_path = os.path.join(app_dir, app_name + '.lnk')
             # print('target', target)
-            item = window['NewItem'].get()
-            # print('item', item)
-            item_path = os.path.join(os.getcwd(), root, tab, item)
-            # print('item_path', item_path)
-            if not os.path.exists(item_path):
-                os.mkdir(item_path)
-            link_path = os.path.join(item_path, item + '.lnk')
             # print('link_path', link_path)
             winshell.CreateShortcut(Path=link_path, Target=target, Icon=(target, 0))
-            sg.popup("成功添加一个项!", auto_close=True, auto_close_duration=1, keep_on_top=True)
+            sg.popup('成功添加应用' + app_name + '!', no_titlebar=True, keep_on_top=True, auto_close=True,
+                     auto_close_duration=2)
             result = True
             break
         elif event == '浏览':
             file = sg.popup_get_file('选择目标文件', keep_on_top=True)
             if file:
-                print(str(file))
-                window['NewTarget'].update(value=file)
-                item = os.path.basename(str(file)).capitalize().removesuffix('.exe')
-                window['NewItem'].update(value=item)
-
+                window['TargetPath'].update(value=file)
+                app_name = os.path.basename(str(file)).capitalize().removesuffix('.exe')
+                window['AppName'].update(value=app_name)
     window.close()
     return result
 
 
-def mod_item(root, item):
+def mod_app(app_key):
     result = False
-    tab = item.split(os.path.sep)[0]
-    default_text = item.split(os.path.sep)[1]
-    layout = [[sg.Text('当前项'), sg.Input(key='CurItem', default_text=default_text)],
+    app_dir = app_key.split('#')[1]
+    app_name = os.path.basename(app_dir)
+    layout = [[sg.Text('应用名称'), sg.Input(key='AppName', default_text=app_name)],
               [sg.Button('确定'), sg.Button('取消')]]
-    window = sg.Window('添加项', layout)
+    window = sg.Window('添加应用', layout)
     while True:
         event, values = window.read()
         if event == sg.WIN_CLOSED or event == '取消':
             break
         elif event == '确定':
-            new_item = window['CurItem'].get()
-            os.renames(os.path.join(root, item), os.path.join(root, tab, new_item))
-            sg.popup("You success to new a item!", auto_close=True, auto_close_duration=1, keep_on_top=True)
+            new_app_name = window['AppName'].get()
+            os.renames(app_dir, os.path.join(os.path.dirname(app_dir), new_app_name))
+            sg.popup(app_name + '成功修改成' + new_app_name + '!', no_titlebar=True, keep_on_top=True, auto_close=True,
+                     auto_close_duration=3)
             result = True
             break
     window.close()
     return result
 
 
-def rmv_item(root, item):
-    result = sg.popup("确认是否删除" + item + "?", button_type=sg.POPUP_BUTTONS_YES_NO)
+def rmv_app(app_key):
+    app_dir = app_key.split('#')[1]
+    app_name = os.path.basename(app_dir)
+    result = sg.popup('是否删除' + app_name + '?', no_titlebar=True, keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
     if result:
-        os.remove(os.path.join(root, item))
+        shutil.rmtree(app_dir)
     return result
 
 
-def run_item(root, item):
-    app_dir = os.path.join(root, item)
-    items = os.listdir(app_dir)
-    try:
-        for item in items:
-            if item.endswith('.lnk'):
-                app = os.path.join(app_dir, item)
+def run_app(app_key):
+    with suppress(Exception):
+        app_dir = app_key.split('#')[1]
+        for app_name in os.listdir(app_dir):
+            if app_name.endswith('.lnk'):
+                app = os.path.join(app_dir, app_name)
                 os.startfile(app)
                 break
-            elif item.endswith('.exe'):
-                app = os.path.join(app_dir, item)
-                subprocess.Popen(app)
+            elif app_name.endswith('.exe'):
+                app = os.path.join(app_dir, app_name)
+                os.popen(app)
                 break
-    except:
-        pass
 
 
 @click.command()
 @click.option('--root', default='root', type=str, help='the root directory of the application')
 @click.option('--theme', default='DarkGreen7', type=str, help='the theme of the application')
 @click.option('--tray', is_flag=True, default=False, help='enable system tray for the application')
-def main(root, theme, tray):
-    try:
-        root = os.environ['MY_ROOT']
-    except:
-        pass
-    try:
-        theme = os.environ['MY_THEME']
-    except:
-        pass
+@click.option('--disable_env', is_flag=True, default=False, help='disable environment variable for the application')
+def main(root, theme, tray, disable_env):
+    if not disable_env:
+        with suppress(Exception):
+            root = os.environ['MY_ROOT']
+            theme = os.environ['MY_THEME']
+    if root == 'root':
+        root = os.path.join(os.getcwd(), root)
 
-    window, sys_tray = make_window(root, theme, tray)
+    window, sys_tray = init_window(root, theme, tray)
     while True:
         event, values = window.read()
         if sys_tray and event == sys_tray.key:
@@ -262,35 +269,34 @@ def main(root, theme, tray):
             folder = sg.popup_get_folder('Choose your folder', keep_on_top=True)
             if folder:
                 root = str(folder)
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '选择主题':
             new_theme = set_theme(theme)
             if theme != new_theme:
                 theme = new_theme
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '添加标签':
             if add_tab(root):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '修改标签':
             if mod_tab(root, values[0]):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '删除标签':
-            if rmv_tab(root, values[0]):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+            if rmv_tab(values[0]):
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '刷新':
-            window, sys_tray = upate_window(window, sys_tray, root, theme)
-        elif event == '添加项':
-            print(event, values)
-            if add_item(root, values[0]):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
-        elif event == '修改项':
+            window, sys_tray = update_window(window, sys_tray, root, theme)
+        elif event == '添加应用':
+            if add_app(values[0]):
+                window, sys_tray = update_window(window, sys_tray, root, theme)
+        elif event == '修改应用':
             item = window.find_element_with_focus()
-            if mod_item(root, item.key):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
-        elif event == '删除项':
+            if mod_app(item.key):
+                window, sys_tray = update_window(window, sys_tray, root, theme)
+        elif event == '删除应用':
             item = window.find_element_with_focus()
-            if rmv_item(root, item.key):
-                window, sys_tray = upate_window(window, sys_tray, root, theme)
+            if rmv_app(item.key):
+                window, sys_tray = update_window(window, sys_tray, root, theme)
         elif event == '打开所在位置':
             item = window.find_element_with_focus()
             cur_path = str(os.path.join(root, item.key))
@@ -300,8 +306,8 @@ def main(root, theme, tray):
             window[key].set_focus()
         else:
             item = window.find_element_with_focus()
-            if str(type(item)).find('Button') != -1:
-                run_item(root, item.key)
+            if str(item).find('Button') > -1:
+                run_app(item.key)
     if sys_tray:
         sys_tray.close()
     window.close()
