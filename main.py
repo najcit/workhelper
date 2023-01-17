@@ -5,6 +5,8 @@
 
 import os
 import copy
+
+import click
 import winshell
 import subprocess
 import PySimpleGUI as sg
@@ -18,7 +20,7 @@ def set_env(key, value):
         os.popen(command)
 
 
-def make_window(root, theme):
+def make_window(root, theme, tray):
     print(root, theme)
     set_env('MY_ROOT', root)
     set_env('MY_THEME', theme)
@@ -64,8 +66,8 @@ def make_window(root, theme):
         window[key].bind("<Button-1>", ' LeftClick')
 
     menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
-    tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手')
-    return window, tray
+    sys_tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手') if tray else None
+    return window, sys_tray
 
 
 def upate_window(window, tray, root, theme):
@@ -221,22 +223,24 @@ def run_item(root, item):
         pass
 
 
-if __name__ == '__main__':
+@click.command()
+@click.option('--root', default='root', type=str, help='the root directory of the application')
+@click.option('--theme', default='DarkGreen7', type=str, help='the theme of the application')
+@click.option('--tray', is_flag=True, default=False, help='enable system tray for the application')
+def main(root, theme, tray):
     try:
         root = os.environ['MY_ROOT']
     except:
-        root = os.path.join(os.getcwd(), 'root')
-
+        pass
     try:
         theme = os.environ['MY_THEME']
     except:
-        theme = 'DarkGreen7'
+        pass
 
-    window, tray = make_window(root, theme)
-
+    window, sys_tray = make_window(root, theme, tray)
     while True:
         event, values = window.read()
-        if event == tray.key:
+        if sys_tray and event == sys_tray.key:
             event = values[event]
 
         if event == '__TIMEOUT__':
@@ -245,8 +249,11 @@ if __name__ == '__main__':
             window.un_hide()
             window.bring_to_front()
         elif event in ('隐藏界面', sg.WIN_CLOSE_ATTEMPTED_EVENT):
-            window.hide()
-            tray.show_icon()
+            if sys_tray:
+                window.hide()
+                sys_tray.show_icon()
+            else:
+                break
         elif event in (sg.WIN_CLOSED, 'Exit', '退出'):
             break
         elif event == '关于':
@@ -255,35 +262,35 @@ if __name__ == '__main__':
             folder = sg.popup_get_folder('Choose your folder', keep_on_top=True)
             if folder:
                 root = str(folder)
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '选择主题':
             new_theme = set_theme(theme)
             if theme != new_theme:
                 theme = new_theme
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '添加标签':
             if add_tab(root):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '修改标签':
             if mod_tab(root, values[0]):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '删除标签':
             if rmv_tab(root, values[0]):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '刷新':
-            window, tray = upate_window(window, tray, root, theme)
+            window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '添加项':
             print(event, values)
             if add_item(root, values[0]):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '修改项':
             item = window.find_element_with_focus()
             if mod_item(root, item.key):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '删除项':
             item = window.find_element_with_focus()
             if rmv_item(root, item.key):
-                window, tray = upate_window(window, tray, root, theme)
+                window, sys_tray = upate_window(window, sys_tray, root, theme)
         elif event == '打开所在位置':
             item = window.find_element_with_focus()
             cur_path = str(os.path.join(root, item.key))
@@ -295,5 +302,10 @@ if __name__ == '__main__':
             item = window.find_element_with_focus()
             if str(type(item)).find('Button') != -1:
                 run_item(root, item.key)
-    tray.close()
+    if sys_tray:
+        sys_tray.close()
     window.close()
+
+
+if __name__ == '__main__':
+    main()
