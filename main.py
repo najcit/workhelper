@@ -4,84 +4,13 @@
 """
 
 import os
-import copy
 import shutil
-from math import ceil
+from contextlib import suppress
 
 import click
 import winshell
 import PySimpleGUI as sg
-from psgtray import SystemTray
-from contextlib import suppress
-
-
-def set_env(key, value):
-    if os.getenv(key) != value:
-        command = f'start /b setx {key} {value}'.format(key=key, value=value)
-        os.popen(command)
-
-
-def init_window(root, theme, tray):
-    set_env('MY_ROOT', root)
-    set_env('MY_THEME', theme)
-
-    sg.theme(theme)
-    menu = [['编辑', ['管理标签', '添加标签']],
-            ['设置', ['打开目录', '选择主题', '自动更新']],
-            ['帮助', ['关于']]]
-    layout = [[sg.MenubarCustom(menu)]]
-    layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索')],
-    whole = '全部应用'
-    items_info = {whole: []}
-    for parent, directorys, _files in os.walk(root):
-        sub_root = parent.replace(root + os.path.sep, '')
-        if parent != root and sub_root.find(os.path.sep) == -1:
-            if parent not in items_info:
-                items_info[parent] = []
-            items_info[parent] += [os.path.join(parent, directory) for directory in directorys]
-            items_info[whole] += [os.path.join(parent, directory) for directory in directorys]
-
-    tabs = []
-    keys = []
-    max_num_per_row = max(ceil(len(items_info)/2), 4)
-    # print(max_num_per_row)
-    app_right_click_menu = [['右击菜单'], ['修改应用', '删除应用', '打开所在位置']]
-    tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加应用', '刷新']]
-    for tab, apps in items_info.items():
-        tab_name = os.path.basename(tab).ljust(4, ' ')
-        tab_key = tab
-        tab_layout = []
-        row_layout = []
-        for app in apps:
-            app_name = os.path.basename(app)
-            app_key = tab+'#'+app
-            button = sg.Button(app_name, tooltip=app_name, key=app_key, size=(12, 2), mouseover_colors='blue',
-                               enable_events=True, right_click_menu=app_right_click_menu)
-            row_layout.append(button)
-            if len(row_layout) == max_num_per_row:
-                tab_layout.append(copy.deepcopy(row_layout))
-                row_layout.clear()
-            keys.append(app_key)
-        else:
-            if len(row_layout) > 0:
-                tab_layout.append(row_layout)
-        tabs.append(sg.Tab(tab_name[:4], tab_layout, key=tab_key, right_click_menu=tab_right_click_menu))
-
-    layout += [[sg.TabGroup([tabs], expand_x=True, expand_y=True, right_click_menu=tab_right_click_menu)]]
-    window = sg.Window('工作助手', layout, finalize=True, enable_close_attempted_event=True)
-    for key in keys:
-        window[key].bind('<Button-1>', ' LeftClick')
-        window[key].bind('<Button-3>', ' RightClick')
-    menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
-    sys_tray = SystemTray(menu, single_click_events=False, window=window, tooltip='工作助手') if tray else None
-    return window, sys_tray
-
-
-def update_window(window, tray, root, theme):
-    if tray:
-        tray.close()
-    window.close()
-    return init_window(root, theme, tray)
+from app import MyApp
 
 
 def set_theme(theme):
@@ -234,31 +163,20 @@ def run_app(app_key):
 @click.command()
 @click.option('--root', default='root', type=str, help='the root directory of the application')
 @click.option('--theme', default='DarkGreen7', type=str, help='the theme of the application')
-@click.option('--tray', is_flag=True, default=False, help='enable system tray for the application')
-@click.option('--disable_env', is_flag=True, default=False, help='disable environment variable for the application')
-def main(root, theme, tray, disable_env):
-    if not disable_env:
-        with suppress(Exception):
-            root = os.environ['MY_ROOT']
-            theme = os.environ['MY_THEME']
-    if root == 'root':
-        root = os.path.join(os.getcwd(), root)
-
-    window, sys_tray = init_window(root, theme, tray)
+@click.option('--enable_tray', is_flag=True, default=False, help='enable system tray for the application')
+@click.option('--enable_env', is_flag=True, default=True, help='enable environment variable for the application')
+def main(root, theme, enable_tray, enable_env):
+    app = MyApp(root, theme, enable_tray, enable_env)
+    app.init()
     while True:
-        event, values = window.read()
-        if sys_tray and event == sys_tray.key:
-            event = values[event]
-
-        if event == '__TIMEOUT__':
-            pass
-        elif event in ('显示界面', sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED):
-            window.un_hide()
-            window.bring_to_front()
+        event, values = app.read()
+        if event in ('显示界面', sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED):
+            app.un_hide()
+            app.bring_to_front()
         elif event in ('隐藏界面', sg.WIN_CLOSE_ATTEMPTED_EVENT):
-            if sys_tray:
-                window.hide()
-                sys_tray.show_icon()
+            if app.systray:
+                app.hide()
+                app.systray.show_icon()
             else:
                 break
         elif event in (sg.WIN_CLOSED, 'Exit', '退出'):
@@ -269,48 +187,53 @@ def main(root, theme, tray, disable_env):
             folder = sg.popup_get_folder('Choose your folder', keep_on_top=True)
             if folder:
                 root = str(folder)
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '选择主题':
             new_theme = set_theme(theme)
             if theme != new_theme:
                 theme = new_theme
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '添加标签':
             if add_tab(root):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '修改标签':
             if mod_tab(root, values[0]):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '删除标签':
             if rmv_tab(values[0]):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '刷新':
-            window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '添加应用':
             if add_app(values[0]):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '修改应用':
-            item = window.find_element_with_focus()
+            item = app.find_element_with_focus()
             if mod_app(item.key):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '删除应用':
-            item = window.find_element_with_focus()
+            item = app.find_element_with_focus()
             if rmv_app(item.key):
-                window, sys_tray = update_window(window, sys_tray, root, theme)
+                app.update()
         elif event == '打开所在位置':
-            item = window.find_element_with_focus()
+            item = app.find_element_with_focus()
             cur_path = str(os.path.join(root, item.key))
-            os.startfile(cur_path)
-        elif event.endswith('Click'):
+            if os.path.isfile(cur_path):
+                os.startfile(cur_path)
+        elif type(event) == str and event.endswith('Click'):
             key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
-            window[key].set_focus()
+            app.window[key].set_focus()
+        elif event == '搜索':
+            tab = values[0]
+            content = values['content']
+            filter_condition = {'tab': tab, 'content': content}
+            if filter_condition != app.filter_condition:
+                app.update(filter_condition)
         else:
-            item = window.find_element_with_focus()
+            item = app.window.find_element_with_focus()
             if str(item).find('Button') > -1:
                 run_app(item.key)
-    if sys_tray:
-        sys_tray.close()
-    window.close()
+    app.close()
 
 
 if __name__ == '__main__':
