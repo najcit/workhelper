@@ -51,7 +51,7 @@ class MyApp:
                 ['设置', ['打开目录', '选择主题', '自动更新']],
                 ['帮助', ['关于']]]
         layout = [[sg.MenubarCustom(menu)]]
-        layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索')],
+        layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索', bind_return_key=True)],
         whole = '全部应用'
         items_info = {whole: []}
         for parent, directorys, _files in os.walk(self.root):
@@ -66,7 +66,7 @@ class MyApp:
         tabs = []
         keys = []
         max_num_per_row = max(math.ceil(len(items_info) / 2), 4)
-        app_right_click_menu = [['右击菜单'], ['修改应用', '删除应用', '打开所在位置']]
+        app_right_click_menu = [['右击菜单'], ['执行应用', '修改应用', '删除应用', '打开应用路径', '复制应用路径']]
         tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加应用', '刷新']]
         for tab, apps in items_info.items():
             tab_name = os.path.basename(tab).ljust(4, ' ')

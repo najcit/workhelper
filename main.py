@@ -8,6 +8,7 @@ import shutil
 from contextlib import suppress
 
 import click
+import pyperclip
 import winshell
 import PySimpleGUI as sg
 from app import MyApp
@@ -146,6 +147,13 @@ def rmv_app(app_key):
     return result
 
 
+def open_app(app_key):
+    cur_path = app_key.split('#')[1]
+    # print(cur_path)
+    if os.path.exists(cur_path):
+        os.startfile(cur_path)
+
+
 def run_app(app_key):
     with suppress(Exception):
         app_dir = app_key.split('#')[1]
@@ -158,6 +166,11 @@ def run_app(app_key):
                 app = os.path.join(app_dir, app_name)
                 os.popen(app)
                 break
+
+
+def copy_app_path(app_key):
+    cur_path = app_key.split('#')[1]
+    pyperclip.copy(cur_path)
 
 
 @click.command()
@@ -211,15 +224,20 @@ def main(root, theme, enable_tray, enable_env):
             item = app.window.find_element_with_focus()
             if mod_app(item.key):
                 app.update()
+        elif event == '修改应用':
+            item = app.window.find_element_with_focus()
+            if str(item).find('Button') > -1:
+                run_app(item.key)
         elif event == '删除应用':
             item = app.window.find_element_with_focus()
             if rmv_app(item.key):
                 app.update()
-        elif event == '打开所在位置':
+        elif event == '打开应用路径':
             item = app.window.find_element_with_focus()
-            cur_path = str(os.path.join(root, item.key))
-            if os.path.isfile(cur_path):
-                os.startfile(cur_path)
+            open_app(item.key)
+        elif event == '复制应用路径':
+            item = app.window.find_element_with_focus()
+            copy_app_path(item.key)
         elif type(event) == str and event.endswith('Click'):
             key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
             app.window[key].set_focus()
@@ -230,6 +248,7 @@ def main(root, theme, enable_tray, enable_env):
             if filter_condition != app.filter_cond:
                 app.update(filter_condition)
         else:
+            # print(event, values)
             item = app.window.find_element_with_focus()
             if str(item).find('Button') > -1:
                 run_app(item.key)
