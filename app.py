@@ -1,7 +1,7 @@
+import contextlib
 import copy
 import os
 import re
-from contextlib import suppress
 import PySimpleGUI as sg
 import psgtray as pt
 import math
@@ -14,7 +14,7 @@ class MyApp:
     enable_env = False
     window = None
     systray = None
-    filter_condition = {}
+    filter_cond = {}
 
     def __init__(self, root, theme, enable_tray, enable_env):
         self.root = root
@@ -24,7 +24,7 @@ class MyApp:
 
     def init(self):
         if self.enable_env:
-            with suppress(Exception):
+            with contextlib.suppress(Exception):
                 self.root = os.environ['MY_ROOT']
                 self.theme = os.environ['MY_THEME']
         if self.root == 'root':
@@ -33,8 +33,14 @@ class MyApp:
         self.init_systray()
         return self
 
-    def update(self, filter_condition=None):
-        self.filter_condition = filter_condition if filter_condition else {}
+    def update(self, root=None, theme=None, filter_cond=None):
+        self.filter_cond = filter_cond if filter_cond else {}
+        if root != self.root:
+            self.root = root
+            self.set_env('MY_ROOT', self.root)
+        if theme != self.theme:
+            self.theme = theme
+            self.set_env('MY_THEME', self.theme)
         self.close()
         self.init()
         return self
@@ -55,8 +61,8 @@ class MyApp:
                     items_info[parent] = []
                 items_info[parent] += [os.path.join(parent, directory) for directory in directorys]
                 items_info[whole] += [os.path.join(parent, directory) for directory in directorys]
-        filter_tab = self.filter_condition['tab'] if len(self.filter_condition) > 0 else ''
-        filter_content = self.filter_condition['content'] if len(self.filter_condition) > 0 else ''
+        filter_tab = self.filter_cond['tab'] if len(self.filter_cond) > 0 else ''
+        filter_content = self.filter_cond['content'] if len(self.filter_cond) > 0 else ''
         tabs = []
         keys = []
         max_num_per_row = max(math.ceil(len(items_info) / 2), 4)
@@ -75,8 +81,6 @@ class MyApp:
                                    enable_events=True, right_click_menu=app_right_click_menu)
                 if is_filter:
                     if re.search(filter_content, app_name, re.IGNORECASE):
-                    # if app_name.find(filter_content) > -1:
-                    #     re.match()
                         row_layout.append(button)
                         keys.append(app_key)
                 else:
@@ -94,11 +98,10 @@ class MyApp:
         layout += [[sg.Sizegrip()]]
         self.window = sg.Window('工作助手', layout, finalize=True, enable_close_attempted_event=True, resizable=True)
 
-        print('filter_tab', filter_tab)
         if filter_tab:
             self.window[filter_tab].select()
         if filter_content:
-            self.window['content'].update(filter_content)
+            self.window[filter_content].update(filter_content)
 
         for key in keys:
             self.window[key].bind('<Button-1>', ' LeftClick')

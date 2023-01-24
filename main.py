@@ -52,9 +52,9 @@ def add_tab(root):
     return result
 
 
-def mod_tab(root, current_tab):
+def mod_tab(root, cur_tab):
     result = False
-    layout = [[sg.Text('当前标签'), sg.Input(key='CurTab', default_text=current_tab)],
+    layout = [[sg.Text('当前标签'), sg.Input(key='CurTab', default_text=cur_tab)],
               [sg.Button('确定'), sg.Button('取消')]]
     tab_window = sg.Window('添加标签', layout)
     while True:
@@ -63,7 +63,7 @@ def mod_tab(root, current_tab):
             break
         elif event == '确定':
             new_tab = tab_window['CurTab'].get()
-            os.renames(os.path.join(root, current_tab), os.path.join(root, new_tab))
+            os.renames(os.path.join(root, cur_tab), os.path.join(root, new_tab))
             sg.popup('You success to new a tab!', auto_close=True, auto_close_duration=1, keep_on_top=True)
             result = True
             break
@@ -171,11 +171,11 @@ def main(root, theme, enable_tray, enable_env):
     while True:
         event, values = app.read()
         if event in ('显示界面', sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED):
-            app.un_hide()
-            app.bring_to_front()
+            app.window.un_hide()
+            app.window.bring_to_front()
         elif event in ('隐藏界面', sg.WIN_CLOSE_ATTEMPTED_EVENT):
             if app.systray:
-                app.hide()
+                app.window.hide()
                 app.systray.show_icon()
             else:
                 break
@@ -203,20 +203,20 @@ def main(root, theme, enable_tray, enable_env):
             if rmv_tab(values[0]):
                 app.update()
         elif event == '刷新':
-                app.update()
+            app.update()
         elif event == '添加应用':
             if add_app(values[0]):
                 app.update()
         elif event == '修改应用':
-            item = app.find_element_with_focus()
+            item = app.window.find_element_with_focus()
             if mod_app(item.key):
                 app.update()
         elif event == '删除应用':
-            item = app.find_element_with_focus()
+            item = app.window.find_element_with_focus()
             if rmv_app(item.key):
                 app.update()
         elif event == '打开所在位置':
-            item = app.find_element_with_focus()
+            item = app.window.find_element_with_focus()
             cur_path = str(os.path.join(root, item.key))
             if os.path.isfile(cur_path):
                 os.startfile(cur_path)
@@ -227,7 +227,7 @@ def main(root, theme, enable_tray, enable_env):
             tab = values[0]
             content = values['content']
             filter_condition = {'tab': tab, 'content': content}
-            if filter_condition != app.filter_condition:
+            if filter_condition != app.filter_cond:
                 app.update(filter_condition)
         else:
             item = app.window.find_element_with_focus()
