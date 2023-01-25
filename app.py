@@ -8,6 +8,7 @@ import math
 import shutil
 import pyperclip
 import winshell
+import yaml
 
 
 class MyApp:
@@ -19,6 +20,7 @@ class MyApp:
     systray = None
     location = None
     filter_cond = {}
+    app_info = None
 
     def __init__(self, root, theme, enable_tray, enable_env, location):
         self.root = root
@@ -71,16 +73,20 @@ class MyApp:
                     break
             elif event in (sg.WIN_CLOSED, 'Exit', '退出'):
                 break
+            elif event == '关于':
+                sg.popup('工作助手', 'Copyright © 2010–2023 by lidajun')
             elif event == '新建窗口':
                 location_x, location_y = self.window.current_location()
                 location = (location_x + 20, location_y + 20)
                 MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
-            elif event == '关于':
-                sg.popup('工作助手', 'Copyright © 2010–2023 by lidajun')
+            elif event == '导入应用信息':
+                self.import_app()
+            elif event == '导出应用信息':
+                self.export_app()
+            elif event == '管理标签':
+                self.manage_tab()
             elif event == '打开目录':
-                folder = sg.popup_get_folder('Choose your folder', keep_on_top=True)
-                if folder:
-                    self.update(str(folder))
+                self.select_app_root()
             elif event == '选择主题':
                 self.set_theme()
             elif event == '添加标签':
@@ -138,22 +144,23 @@ class MyApp:
         layout = [[sg.MenubarCustom(menu)]]
         layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索', bind_return_key=True)],
         whole = '全部应用'
-        items_info = {whole: []}
+        app_info = {whole: []}
         for parent, directorys, _files in os.walk(self.root):
             sub_root = parent.replace(self.root + os.path.sep, '')
             if parent != self.root and sub_root.find(os.path.sep) == -1:
-                if parent not in items_info:
-                    items_info[parent] = []
-                items_info[parent] += [os.path.join(parent, directory) for directory in directorys]
-                items_info[whole] += [os.path.join(parent, directory) for directory in directorys]
+                if parent not in app_info:
+                    app_info[parent] = []
+                app_info[parent] += [os.path.join(parent, directory) for directory in directorys]
+                app_info[whole] += [os.path.join(parent, directory) for directory in directorys]
+        self.app_info = app_info
         filter_tab = self.filter_cond['tab'] if len(self.filter_cond) > 0 else ''
         filter_content = self.filter_cond['content'] if len(self.filter_cond) > 0 else ''
         tabs = []
         keys = []
-        max_num_per_row = max(math.ceil(len(items_info) / 2), 4)
+        max_num_per_row = max(math.ceil(len(app_info) / 2), 4)
         app_right_click_menu = [['右击菜单'], ['执行应用', '修改应用', '删除应用', '打开应用路径', '复制应用路径']]
         tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加应用', '刷新']]
-        for tab, apps in items_info.items():
+        for tab, apps in app_info.items():
             tab_name = os.path.basename(tab).ljust(4, ' ')
             tab_key = tab
             tab_layout = []
@@ -186,6 +193,7 @@ class MyApp:
                                     resizable=True, finalize=True)
         else:
             self.window = sg.Window('工作助手', layout, enable_close_attempted_event=True, resizable=True, finalize=True)
+        self.window.set_min_size((600, 400))
         if filter_tab:
             self.window[filter_tab].select()
         if filter_content:
@@ -212,12 +220,6 @@ class MyApp:
             self.window.close()
         if self.systray:
             self.systray.close()
-
-    @staticmethod
-    def set_env(key, value):
-        if os.getenv(key) != value:
-            command = f'start /b setx {key} {value}'.format(key=key, value=value)
-            os.popen(command)
 
     def set_theme(self):
         cur_theme = self.theme
@@ -276,6 +278,12 @@ class MyApp:
                 break
         tab_window.close()
         return result
+
+    @staticmethod
+    def set_env(key, value):
+        if os.getenv(key) != value:
+            command = f'start /b setx {key} {value}'.format(key=key, value=value)
+            os.popen(command)
 
     @staticmethod
     def rmv_tab(tab_key):
@@ -379,3 +387,41 @@ class MyApp:
     def copy_app_path(app_key):
         cur_path = app_key.split('#')[1]
         pyperclip.copy(cur_path)
+
+    def import_app(self):
+        file = sg.popup_get_file(message='导入文件', title='选择导入文件', keep_on_top=True)
+        if file:
+            with open(str(file), "r", encoding='utf8') as file:
+                app_cfg = yaml.load(file, yaml.FullLoader)
+                for tab, apps in app_cfg.items():
+                    tab_path = os.path.join(self.root, tab)
+                    if not os.path.exists(tab_path):
+                        os.mkdir(tab_path)
+                    for app in apps:
+                        app_path = os.path.join(tab_path, app)
+                        if not os.path.exists(app_path):
+                            os.mkdir(app_path)
+            self.update()
+
+    def export_app(self):
+        directory = sg.popup_get_folder(message='导出路径', title='选择导出路径', keep_on_top=True)
+        if directory:
+            file_path = os.path.join(directory, 'workhelper.yml')
+            app_cfg = {}
+            for tab, apps in self.app_info.items():
+                if tab == '全部应用':
+                    continue
+                tab = os.path.basename(tab)
+                apps = [os.path.basename(app) for app in apps]
+                app_cfg[tab] = apps
+            with open(file_path, 'w', encoding='utf-8') as file:
+                yaml.dump(app_cfg, file, allow_unicode=True)
+
+    @staticmethod
+    def manage_app(self):
+        pass
+
+    def select_app_root(self):
+        root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
+        if os.path.isdir(root):
+            self.update(root)
