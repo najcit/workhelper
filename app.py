@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import contextlib
 import copy
 import os
@@ -12,6 +14,7 @@ import yaml
 
 
 class MyApp:
+    name = None
     root = None
     theme = None
     enable_tray = False
@@ -21,20 +24,45 @@ class MyApp:
     location = None
     filter_cond = {}
     app_info = None
+    event_function = None
 
-    def __init__(self, root, theme, enable_tray, enable_env, location):
+    def __init__(self, root, theme, enable_tray, enable_env, location, name=None):
+        self.name = name if name is not None else '工作助手'
         self.root = root
         self.theme = theme
         self.enable_tray = enable_tray
         self.enable_env = enable_env
         self.location = location
+        self.event_function = {
+            sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED: self.show_top,
+            sg.WIN_CLOSE_ATTEMPTED_EVENT: self.attempt_exit,
+            '显示界面': self.show_top,
+            '隐藏界面': self.attempt_exit,
+            '关闭窗口': self.attempt_exit,
+            '检查更新': self.check_update,
+            '关于': self.about,
+            '新建窗口': self.new_window,
+            '导出应用信息': self.export_app,
+            '打开目录': self.select_app_root,
+            '选择主题': self.set_theme,
+            '管理标签': self.manage_tab,
+            '新建标签': self.add_tab,
+            '修改标签': self.mod_tab,
+            '删除标签': self.rmv_tab,
+            '刷新': self.refresh,
+            '新建应用': self.add_app,
+            '修改应用': self.mod_app,
+            '删除应用': self.rmv_app,
+            '打开应用路径': self.open_app,
+            '复制应用路径': self.copy_app_path,
+            '搜索': self.search_app
+        }
 
     @staticmethod
     def show(root, theme, enable_tray, enable_env, location=None):
         app = MyApp(root, theme, enable_tray, enable_env, location)
         app.init()
         app.run()
-        app.close()
 
     def init(self):
         if self.enable_env:
@@ -47,7 +75,7 @@ class MyApp:
         self.init_systray()
         return self
 
-    def update(self, root=None, theme=None, filter_cond=None):
+    def refresh(self, root=None, theme=None, filter_cond=None):
         if root and root != self.root:
             self.root = root
             self.set_env('MY_ROOT', self.root)
@@ -62,87 +90,25 @@ class MyApp:
     def run(self):
         while True:
             event, values = self.read()
-            if event in (sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED, '显示界面'):
-                self.window.un_hide()
-                self.window.bring_to_front()
-            elif event in (sg.WIN_CLOSE_ATTEMPTED_EVENT, '隐藏界面', '关闭窗口'):
-                if self.systray:
-                    self.window.hide()
-                    self.systray.show_icon()
-                else:
-                    break
-            elif event in (sg.WIN_CLOSED, 'Exit', '退出'):
-                break
-            elif event == '关于':
-                sg.popup('工作助手', 'Copyright © 2010–2023 by lidajun')
-            elif event == '新建窗口':
-                location_x, location_y = self.window.current_location()
-                location = (location_x + 20, location_y + 20)
-                MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
-            elif event == '导入应用信息':
-                self.import_app()
-            elif event == '导出应用信息':
-                self.export_app()
-            elif event == '打开目录':
-                self.select_app_root()
-            elif event == '选择主题':
-                self.set_theme()
-            elif event == '管理标签':
-                self.manage_tab()
-            elif event == '新建标签':
-                self.add_tab()
-            elif event == '修改标签':
-                cur_tab = values[0]
-                self.mod_tab(cur_tab)
-            elif event == '删除标签':
-                cur_tab = values[0]
-                self.rmv_tab(cur_tab)
-            elif event == '刷新':
-                self.update()
-            elif event == '新建应用':
-                cur_tab = values[0]
-                self.add_app(cur_tab)
-            elif event == '修改应用':
-                item = self.window.find_element_with_focus()
-                if self.mod_app(item.key):
-                    self.update()
-            elif event == '修改应用':
-                item = self.window.find_element_with_focus()
-                if str(item).find('Button') > -1:
-                    self.run_app(item.key)
-            elif event == '删除应用':
-                item = self.window.find_element_with_focus()
-                if self.rmv_app(item.key):
-                    self.update()
-            elif event == '打开应用路径':
-                item = self.window.find_element_with_focus()
-                self.open_app(item.key)
-            elif event == '复制应用路径':
-                item = self.window.find_element_with_focus()
-                self.copy_app_path(item.key)
-            elif type(event) == str and event.endswith('Click'):
-                key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
-                self.window[key].set_focus()
-            elif event == '搜索':
-                tab = values[0]
-                content = values['content']
-                filter_condition = {'tab': tab, 'content': content}
-                if filter_condition != self.filter_cond:
-                    self.update(filter_condition)
+            if event in self.event_function:
+                self.event_function[event](event=event, values=values)
             else:
                 # print(event, values)
-                item = self.window.find_element_with_focus()
-                if str(item).find('Button') > -1:
-                    self.run_app(item.key)
+                if type(event) == str and event.endswith('Click'):
+                    self.select_app(event=event)
+                else:
+                    self.run_app()
+        return self
 
     def init_window(self):
         sg.theme(self.theme)
         menu = [['文件', ['新建窗口', '关闭窗口', '导入应用信息', '导出应用信息', '退出']],
                 ['编辑', ['管理标签', '新建标签']],
-                ['设置', ['打开目录', '选择主题', '自动更新']],
+                ['设置', ['打开目录', '选择主题', '检查更新']],
                 ['帮助', ['关于']]]
         layout = [[sg.MenubarCustom(menu)]]
-        layout += [sg.Input(enable_events=True, key='content', expand_x=True), sg.Button('搜索', bind_return_key=True)],
+        layout += [sg.Input(enable_events=True, key='-CONTENT-', expand_x=True),
+                   sg.Button('搜索', bind_return_key=True)],
         whole = '全部应用'
         app_info = {whole: []}
         for parent, directorys, _files in os.walk(self.root):
@@ -188,17 +154,18 @@ class MyApp:
             tabs.append(sg.Tab(tab_name[:4], tab_layout, key=tab_key, right_click_menu=tab_right_click_menu))
         layout += [[sg.TabGroup([tabs], key='-TAB-GROUP-', expand_x=True, expand_y=True,
                                 right_click_menu=tab_right_click_menu)]]
-        layout += [[sg.Sizegrip()]]
+        layout += [[sg.Text('欢迎使用'+self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
         if self.location:
-            self.window = sg.Window('工作助手', layout, location=self.location, enable_close_attempted_event=True,
+            self.window = sg.Window(self.name, layout, location=self.location, enable_close_attempted_event=True,
                                     resizable=True, finalize=True)
         else:
-            self.window = sg.Window('工作助手', layout, enable_close_attempted_event=True, resizable=True, finalize=True)
-        self.window.set_min_size((600, 400))
+            self.window = sg.Window(self.name, layout, enable_close_attempted_event=True, resizable=True,
+                                    finalize=True)
+        self.window.set_min_size(self.window.size)
         if filter_tab:
             self.window[filter_tab].select()
         if filter_content:
-            self.window[filter_content].update(filter_content)
+            self.window['-CONTENT-'].update(filter_content)
         for key in keys:
             self.window[key].bind('<Button-1>', ' LeftClick')
             self.window[key].bind('<Button-3>', ' RightClick')
@@ -207,7 +174,7 @@ class MyApp:
     def init_systray(self):
         menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
         if self.enable_tray and self.window:
-            self.systray = pt.SystemTray(menu, single_click_events=False, window=self.window, tooltip='工作助手')
+            self.systray = pt.SystemTray(menu, single_click_events=False, window=self.window, tooltip=self.name)
         return self.systray
 
     def read(self, timeout=None, timeout_key=sg.TIMEOUT_KEY, close=False):
@@ -221,6 +188,30 @@ class MyApp:
             self.window.close()
         if self.systray:
             self.systray.close()
+
+    def show_top(self, **_kwargs):
+        self.window.un_hide()
+        self.window.bring_to_front()
+
+    def attempt_exit(self, **_kwargs):
+        if self.systray:
+            self.window.hide()
+            self.systray.show_icon()
+        else:
+            self.close()
+            exit(0)
+
+    def exit(self, **_kwargs):
+        self.close()
+        exit(0)
+
+    def about(self, **_kwargs):
+        sg.popup(self.name, 'Copyright © 2010–2023 by lidajun')
+
+    def new_window(self, **_kwargs):
+        location_x, location_y = self.window.current_location()
+        location = (location_x + 20, location_y + 20)
+        MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
 
     def set_theme(self):
         cur_theme = self.theme
@@ -240,8 +231,11 @@ class MyApp:
         if cur_theme != self.theme:
             self.theme = cur_theme
             self.set_env('MY_THEME', self.theme)
-            self.update()
+            self.refresh()
         return self
+
+    def check_update(self):
+        pass
 
     def manage_tab(self):
         values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
@@ -331,14 +325,16 @@ class MyApp:
                 if not os.path.exists(tab_path):
                     os.mkdir(tab_path)
                 result = tab_name
-                sg.popup('成功添加'+tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
+                sg.popup('成功添加' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
         window.close()
         if result:
-            self.update()
+            self.refresh()
         return result
 
-    def mod_tab(self, tab_key):
+    def mod_tab(self, tab_key=None, **kwargs):
+        if tab_key is None:
+            tab_key = kwargs['values']['-TAB-GROUP-']
         result = False
         tab_name = os.path.basename(tab_key)
         tab_path = tab_key
@@ -354,24 +350,40 @@ class MyApp:
                 if os.path.exists(tab_path):
                     os.renames(tab_path, os.path.join(self.root, tab_name))
                 result = tab_name
-                sg.popup('成功修改为'+tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
+                sg.popup('成功修改为' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
         window.close()
         if result:
-            self.update()
+            self.refresh()
         return result
 
-    def rmv_tab(self, tab_key):
+    def rmv_tab(self, tab_key=None, **kwargs):
+        if tab_key is None:
+            tab_key = kwargs['values']['-TAB-GROUP-']
         tab_name = os.path.basename(tab_key)
         tab_dir = tab_key
-        result = sg.popup('是否删除'+tab_name+'?', keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
+        result = sg.popup('是否删除' + tab_name + '?', keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
         if result:
             shutil.rmtree(tab_dir)
-            self.update()
+            self.refresh()
         return result
 
-    @staticmethod
-    def add_app(tab_key):
+    def select_app(self, **kwargs):
+        event = kwargs['event']
+        key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
+        self.window[key].set_focus()
+
+    def search_app(self, **kwargs):
+        values = kwargs['values']
+        tab = values['-TAB-GROUP-']
+        content = values['-CONTENT-']
+        filter_cond = {'tab': tab, 'content': content}
+        if filter_cond != self.filter_cond:
+            self.refresh(filter_cond=filter_cond)
+
+    def add_app(self, tab_key=None, **kwargs):
+        if tab_key is None:
+            tab_key = kwargs['values']['-TAB-GROUP-']
         result = False
         tab_dir = tab_key
         layout = [[sg.Text('添加目标'), sg.Input(key='TargetPath'), sg.Button('浏览')],
@@ -380,7 +392,13 @@ class MyApp:
         window = sg.Window('添加应用', layout, element_justification='right')
         while True:
             event, values = window.read()
-            if event == sg.WIN_CLOSED or event == '取消':
+            if event == '浏览':
+                file = sg.popup_get_file('选择目标文件', keep_on_top=True)
+                if file:
+                    window['TargetPath'].update(value=file)
+                    app_name = os.path.basename(str(file)).capitalize().removesuffix('.exe')
+                    window['AppName'].update(value=app_name)
+            elif event == sg.WIN_CLOSED or event == '取消':
                 break
             elif event == '确定':
                 target = window['TargetPath'].get()
@@ -396,17 +414,14 @@ class MyApp:
                          auto_close_duration=2)
                 result = True
                 break
-            elif event == '浏览':
-                file = sg.popup_get_file('选择目标文件', keep_on_top=True)
-                if file:
-                    window['TargetPath'].update(value=file)
-                    app_name = os.path.basename(str(file)).capitalize().removesuffix('.exe')
-                    window['AppName'].update(value=app_name)
         window.close()
+        if result:
+            self.refresh()
         return result
 
-    @staticmethod
-    def mod_app(app_key):
+    def mod_app(self):
+        item = self.window.find_element_with_focus()
+        app_key = item.key
         result = False
         app_dir = app_key.split('#')[1]
         app_name = os.path.basename(app_dir)
@@ -420,46 +435,55 @@ class MyApp:
             elif event == '确定':
                 new_app_name = window['AppName'].get()
                 os.renames(app_dir, os.path.join(os.path.dirname(app_dir), new_app_name))
-                sg.popup(app_name + '成功修改成' + new_app_name + '!', no_titlebar=True, keep_on_top=True, auto_close=True,
+                sg.popup(app_name + '成功修改成' + new_app_name + '!', no_titlebar=True, keep_on_top=True,
+                         auto_close=True,
                          auto_close_duration=3)
                 result = True
                 break
         window.close()
+        if result:
+            self.refresh()
         return result
 
-    @staticmethod
-    def rmv_app(app_key):
+    def rmv_app(self):
+        item = self.window.find_element_with_focus()
+        app_key = item.key
         app_dir = app_key.split('#')[1]
         app_name = os.path.basename(app_dir)
         result = sg.popup('是否删除' + app_name + '?', no_titlebar=True, keep_on_top=True,
                           button_type=sg.POPUP_BUTTONS_YES_NO)
         if result:
             shutil.rmtree(app_dir)
+            self.refresh()
         return result
 
-    @staticmethod
-    def open_app(app_key):
+    def open_app(self):
+        item = self.window.find_element_with_focus()
+        app_key = item.key
         cur_path = app_key.split('#')[1]
         # print(cur_path)
         if os.path.exists(cur_path):
             os.startfile(cur_path)
 
-    @staticmethod
-    def run_app(app_key):
-        with contextlib.suppress(Exception):
-            app_dir = app_key.split('#')[1]
-            for app_name in os.listdir(app_dir):
-                if app_name.endswith('.lnk'):
-                    app = os.path.join(app_dir, app_name)
-                    os.startfile(app)
-                    break
-                elif app_name.endswith('.exe'):
-                    app = os.path.join(app_dir, app_name)
-                    os.popen(app)
-                    break
+    def run_app(self):
+        item = self.window.find_element_with_focus()
+        if str(item).find('Button') > -1:
+            app_key = item.key
+            with contextlib.suppress(Exception):
+                app_dir = app_key.split('#')[1]
+                for app_name in os.listdir(app_dir):
+                    if app_name.endswith('.lnk'):
+                        app = os.path.join(app_dir, app_name)
+                        os.startfile(app)
+                        break
+                    elif app_name.endswith('.exe'):
+                        app = os.path.join(app_dir, app_name)
+                        os.popen(app)
+                        break
 
-    @staticmethod
-    def copy_app_path(app_key):
+    def copy_app_path(self):
+        item = self.window.find_element_with_focus()
+        app_key = item.key
         cur_path = app_key.split('#')[1]
         pyperclip.copy(cur_path)
 
@@ -479,7 +503,7 @@ class MyApp:
                             os.mkdir(app_path)
             result = True
         if result:
-            self.update()
+            self.refresh()
         return result
 
     def export_app(self):
@@ -502,7 +526,7 @@ class MyApp:
     def select_app_root(self):
         root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
         if os.path.isdir(root):
-            self.update(root)
+            self.refresh(root)
 
     @staticmethod
     def set_env(key, value):
