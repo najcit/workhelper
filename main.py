@@ -12,7 +12,8 @@ from app import MyApp
 @click.option('--theme', default='DarkGreen7', type=str, help='the theme of the application')
 @click.option('--enable_tray', is_flag=True, default=False, help='enable system tray for the application')
 @click.option('--enable_env', is_flag=True, default=True, help='enable environment variable for the application')
-def main(root, theme, enable_tray, enable_env):
+@click.option('--update_mode', is_flag=True, default=False, help='enable environment variable for the application')
+def main(root, theme, enable_tray, enable_env, update_mode):
     MyApp.show(root, theme, enable_tray, enable_env)
 
 

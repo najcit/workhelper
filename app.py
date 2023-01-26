@@ -11,10 +11,15 @@ import shutil
 import pyperclip
 import winshell
 import yaml
+from appupdater import AppUpdater
+
+THREAD_KEY = '-THREAD-'
+DL_END_KEY = '-DOWNLOAD-END-'
 
 
 class MyApp:
     name = None
+    version = None
     root = None
     theme = None
     enable_tray = False
@@ -24,21 +29,24 @@ class MyApp:
     location = None
     filter_cond = {}
     app_info = None
-    event_function = None
+    event_functions = None
 
     def __init__(self, root, theme, enable_tray, enable_env, location, name=None):
         self.name = name if name is not None else '工作助手'
+        self.version = '1.0.0'
         self.root = root
         self.theme = theme
         self.enable_tray = enable_tray
         self.enable_env = enable_env
         self.location = location
-        self.event_function = {
+        self.updater = AppUpdater()
+        self.event_functions = {
             sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED: self.show_top,
             sg.WIN_CLOSE_ATTEMPTED_EVENT: self.attempt_exit,
             '显示界面': self.show_top,
             '隐藏界面': self.attempt_exit,
             '关闭窗口': self.attempt_exit,
+            '退出': self.exit,
             '检查更新': self.check_update,
             '关于': self.about,
             '新建窗口': self.new_window,
@@ -55,7 +63,7 @@ class MyApp:
             '删除应用': self.rmv_app,
             '打开应用路径': self.open_app,
             '复制应用路径': self.copy_app_path,
-            '搜索': self.search_app
+            '搜索': self.search_app,
         }
 
     @staticmethod
@@ -90,22 +98,25 @@ class MyApp:
     def run(self):
         while True:
             event, values = self.read()
-            if event in self.event_function:
-                self.event_function[event](event=event, values=values)
+            if event in self.event_functions and callable(self.event_functions[event]):
+                # noinspection PyArgumentList
+                self.event_functions[event](event=event, values=values)
             else:
-                # print(event, values)
-                if type(event) == str and event.endswith('Click'):
+                print(event, values, isinstance(event, tuple), type(event), len(event) > 1)
+                if isinstance(event, str) and event.endswith('Click'):
                     self.select_app(event=event)
+                elif isinstance(event, tuple) and event == (THREAD_KEY, DL_END_KEY):
+                    print(event, values)
+                    self.exit()
                 else:
                     self.run_app()
-        return self
 
     def init_window(self):
         sg.theme(self.theme)
         menu = [['文件', ['新建窗口', '关闭窗口', '导入应用信息', '导出应用信息', '退出']],
                 ['编辑', ['管理标签', '新建标签']],
-                ['设置', ['打开目录', '选择主题', '检查更新']],
-                ['帮助', ['关于']]]
+                ['设置', ['打开目录', '选择主题']],
+                ['帮助', ['检查更新', '关于']]]
         layout = [[sg.MenubarCustom(menu)]]
         layout += [sg.Input(enable_events=True, key='-CONTENT-', expand_x=True),
                    sg.Button('搜索', bind_return_key=True)],
@@ -154,7 +165,7 @@ class MyApp:
             tabs.append(sg.Tab(tab_name[:4], tab_layout, key=tab_key, right_click_menu=tab_right_click_menu))
         layout += [[sg.TabGroup([tabs], key='-TAB-GROUP-', expand_x=True, expand_y=True,
                                 right_click_menu=tab_right_click_menu)]]
-        layout += [[sg.Text('欢迎使用'+self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
+        layout += [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
         if self.location:
             self.window = sg.Window(self.name, layout, location=self.location, enable_close_attempted_event=True,
                                     resizable=True, finalize=True)
@@ -205,15 +216,7 @@ class MyApp:
         self.close()
         exit(0)
 
-    def about(self, **_kwargs):
-        sg.popup(self.name, 'Copyright © 2010–2023 by lidajun')
-
-    def new_window(self, **_kwargs):
-        location_x, location_y = self.window.current_location()
-        location = (location_x + 20, location_y + 20)
-        MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
-
-    def set_theme(self):
+    def set_theme(self, **_kwargs):
         cur_theme = self.theme
         layout = [[sg.Text('See how elements look under different themes by choosing a different theme here!')],
                   [sg.Listbox(values=sg.theme_list(), default_values=[cur_theme], size=(20, 12), key='THEME_LISTBOX',
@@ -234,8 +237,31 @@ class MyApp:
             self.refresh()
         return self
 
-    def check_update(self):
-        pass
+    def check_update(self, **_kwargs):
+        if self.updater.is_new_version(self.version):
+            # 检查是否为最新版本
+            text = '当前软件已是最新版本，版本号: {version}'.format(version=self.version)
+            sg.popup_no_buttons(text, title=self.name, auto_close=True, auto_close_duration=10)
+        else:
+            # 下载最新版本, 更新下载进度
+            async def update_progress(percentage):
+                progressbar = self.window['-NOTIFICATION-']
+                value = '最新版软件正在下载，进度为 {percentage}%。'.format(percentage=percentage)
+                progressbar.update(value=value)
+                if percentage >= 100:
+                    value = '最新版软件下载已完成。'
+                    progressbar.update(value=value)
+                    self.window.write_event_value((THREAD_KEY, DL_END_KEY), percentage)
+            self.window.start_thread(lambda: self.updater.install(update_progress_func=update_progress), ())
+
+    def about(self, **_kwargs):
+        text = '''\n当前已是最新版本: {version}\nCopyright © 2023–2026 by lidajun\n'''.format(version=self.version)
+        sg.popup_no_buttons(text, title=self.name, auto_close=True, auto_close_duration=10)
+
+    def new_window(self, **_kwargs):
+        location_x, location_y = self.window.current_location()
+        location = (location_x + 20, location_y + 20)
+        MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
 
     def manage_tab(self):
         values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
