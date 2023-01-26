@@ -83,13 +83,13 @@ class MyApp:
                 self.import_app()
             elif event == '导出应用信息':
                 self.export_app()
-            elif event == '管理标签':
-                self.manage_tab()
             elif event == '打开目录':
                 self.select_app_root()
             elif event == '选择主题':
                 self.set_theme()
-            elif event == '添加标签':
+            elif event == '管理标签':
+                self.manage_tab()
+            elif event == '新建标签':
                 self.add_tab()
             elif event == '修改标签':
                 cur_tab = values[0]
@@ -99,7 +99,7 @@ class MyApp:
                 self.rmv_tab(cur_tab)
             elif event == '刷新':
                 self.update()
-            elif event == '添加应用':
+            elif event == '新建应用':
                 cur_tab = values[0]
                 self.add_app(cur_tab)
             elif event == '修改应用':
@@ -138,7 +138,7 @@ class MyApp:
     def init_window(self):
         sg.theme(self.theme)
         menu = [['文件', ['新建窗口', '关闭窗口', '导入应用信息', '导出应用信息', '退出']],
-                ['编辑', ['管理标签', '添加标签']],
+                ['编辑', ['管理标签', '新建标签']],
                 ['设置', ['打开目录', '选择主题', '自动更新']],
                 ['帮助', ['关于']]]
         layout = [[sg.MenubarCustom(menu)]]
@@ -159,7 +159,7 @@ class MyApp:
         keys = []
         max_num_per_row = max(math.ceil(len(app_info) / 2), 4)
         app_right_click_menu = [['右击菜单'], ['执行应用', '修改应用', '删除应用', '打开应用路径', '复制应用路径']]
-        tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '添加应用', '刷新']]
+        tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '新建应用', '刷新']]
         for tab, apps in app_info.items():
             tab_name = os.path.basename(tab).ljust(4, ' ')
             tab_key = tab
@@ -186,7 +186,8 @@ class MyApp:
                 if len(row_layout) > 0:
                     tab_layout.append(row_layout)
             tabs.append(sg.Tab(tab_name[:4], tab_layout, key=tab_key, right_click_menu=tab_right_click_menu))
-        layout += [[sg.TabGroup([tabs], expand_x=True, expand_y=True, right_click_menu=tab_right_click_menu)]]
+        layout += [[sg.TabGroup([tabs], key='-TAB-GROUP-', expand_x=True, expand_y=True,
+                                right_click_menu=tab_right_click_menu)]]
         layout += [[sg.Sizegrip()]]
         if self.location:
             self.window = sg.Window('工作助手', layout, location=self.location, enable_close_attempted_event=True,
@@ -242,57 +243,131 @@ class MyApp:
             self.update()
         return self
 
+    def manage_tab(self):
+        values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
+        cur_tab = os.path.basename(self.window['-TAB-GROUP-'].get())
+        col1 = sg.Column([[sg.Listbox(values, key='-TAB-LIST-', default_values=[cur_tab],
+                                      select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, enable_events=True, size=(30, 40))]],
+                         size=(200, 400))
+        col2 = sg.Column([[sg.Button('新建', key='-ADD-')],
+                          [sg.Button('编辑', key='-EDIT-')],
+                          [sg.Button('删除', key='-DELETE-')],
+                          [sg.Button('导入', key='-IMPORT-')],
+                          [sg.Button('导出', key='-EXPORT-')]],
+                         size=(50, 350))
+        col3 = [sg.Button('确定', key='-OK-'), sg.Button('取消', key='-CANCEL-')]
+        layout = [[col1, col2], [col3]]
+        window = sg.Window('管理标签', layout, keep_on_top=True, element_justification='right', finalize=True)
+
+        def disable_buttons(tab):
+            if tab == '全部应用':
+                keys = ['-EDIT-', '-DELETE-']
+            else:
+                keys = []
+            for key in ['-ADD-', '-EDIT-', '-DELETE-', '-IMPORT-', '-EXPORT-']:
+                if key in keys:
+                    window[key].update(disabled=True)
+                else:
+                    window[key].update(disabled=False)
+
+        disable_buttons(cur_tab)
+        while True:
+            event, values = window.read()
+            print(event, values)
+            if event in (sg.WIN_CLOSED, '-CANCEL-'):
+                break
+            elif event == '-OK-':
+                break
+            elif event == '-ADD-':
+                new_tab = self.add_tab()
+                print(type(new_tab))
+                if isinstance(new_tab, str):
+                    values = window['-TAB-LIST-'].get_list_values()
+                    values.append(new_tab)
+                    index = values.index(new_tab)
+                    window['-TAB-LIST-'].update(values, set_to_index=index)
+            elif event == '-EDIT-':
+                cur_tab = window['-TAB-LIST-'].get()[0]
+                print('cur_tab', cur_tab)
+                tab_key = os.path.join(self.root, cur_tab)
+                new_tab = self.mod_tab(tab_key)
+                if isinstance(new_tab, str):
+                    values = window['-TAB-LIST-'].get_list_values()
+                    index = values.index(cur_tab)
+                    values[index] = new_tab
+                    window['-TAB-LIST-'].update(values, set_to_index=index)
+            elif event == '-DELETE-':
+                cur_tab = window['-TAB-LIST-'].get()[0]
+                tab_key = os.path.join(self.root, cur_tab)
+                if self.rmv_tab(tab_key):
+                    values = window['-TAB-LIST-'].get_list_values()
+                    values.remove(cur_tab)
+                    window['-TAB-LIST-'].update(values)
+            elif event == '-IMPORT-':
+                if self.import_app():
+                    values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
+                    window['-TAB-LIST-'].update(values)
+            elif event == '-EXPORT-':
+                self.export_app()
+            elif event == '-TAB-LIST-':
+                tab = values[event][0]
+                disable_buttons(tab)
+            else:
+                print(event, values)
+        window.close()
+
     def add_tab(self):
         result = False
-        layout = [[sg.Text('新标签'), sg.Input(key='NewTab')],
+        layout = [[sg.Text('新标签'), sg.Input(key='-NEW-TAB-')],
                   [sg.Button('确定'), sg.Button('取消')]]
-        tab_window = sg.Window('添加标签', layout, element_justification='right')
+        window = sg.Window('新建标签', layout, keep_on_top=True, element_justification='right')
         while True:
-            event, values = tab_window.read()
+            event, values = window.read()
             if event == sg.WIN_CLOSED or event == '取消':
                 break
             elif event == '确定':
-                new_tab = tab_window['NewTab'].get()
-                print(new_tab)
-                os.mkdir(os.path.join(self.root, new_tab))
-                sg.popup('You success to new a tab!', auto_close=True, auto_close_duration=1, keep_on_top=True)
-                result = True
+                tab_name = window['-NEW-TAB-'].get()
+                tab_path = os.path.join(self.root, tab_name)
+                if not os.path.exists(tab_path):
+                    os.mkdir(tab_path)
+                result = tab_name
+                sg.popup('成功添加'+tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
-        tab_window.close()
+        window.close()
+        if result:
+            self.update()
         return result
 
-    def mod_tab(self, cur_tab):
+    def mod_tab(self, tab_key):
         result = False
-        layout = [[sg.Text('当前标签'), sg.Input(key='CurTab', default_text=cur_tab)],
+        tab_name = os.path.basename(tab_key)
+        tab_path = tab_key
+        layout = [[sg.Text('当前标签'), sg.Input(key='CurTab', default_text=tab_name)],
                   [sg.Button('确定'), sg.Button('取消')]]
-        tab_window = sg.Window('添加标签', layout)
+        window = sg.Window('编辑标签', layout, keep_on_top=True, element_justification='right')
         while True:
-            event, values = tab_window.read()
+            event, values = window.read()
             if event == sg.WIN_CLOSED or event == '取消':
                 break
             elif event == '确定':
-                new_tab = tab_window['CurTab'].get()
-                os.renames(os.path.join(self.root, cur_tab), os.path.join(self.root, new_tab))
-                sg.popup('You success to new a tab!', auto_close=True, auto_close_duration=1, keep_on_top=True)
-                result = True
+                tab_name = window['CurTab'].get()
+                if os.path.exists(tab_path):
+                    os.renames(tab_path, os.path.join(self.root, tab_name))
+                result = tab_name
+                sg.popup('成功修改为'+tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
-        tab_window.close()
+        window.close()
+        if result:
+            self.update()
         return result
 
-    @staticmethod
-    def set_env(key, value):
-        if os.getenv(key) != value:
-            command = f'start /b setx {key} {value}'.format(key=key, value=value)
-            os.popen(command)
-
-    @staticmethod
-    def rmv_tab(tab_key):
+    def rmv_tab(self, tab_key):
         tab_name = os.path.basename(tab_key)
         tab_dir = tab_key
-        result = sg.popup('是否删除' + tab_name + '?', no_titlebar=True, keep_on_top=True,
-                          button_type=sg.POPUP_BUTTONS_YES_NO)
+        result = sg.popup('是否删除'+tab_name+'?', keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
         if result:
             shutil.rmtree(tab_dir)
+            self.update()
         return result
 
     @staticmethod
@@ -337,7 +412,7 @@ class MyApp:
         app_name = os.path.basename(app_dir)
         layout = [[sg.Text('应用名称'), sg.Input(key='AppName', default_text=app_name)],
                   [sg.Button('确定'), sg.Button('取消')]]
-        window = sg.Window('添加应用', layout)
+        window = sg.Window('编辑应用', layout)
         while True:
             event, values = window.read()
             if event == sg.WIN_CLOSED or event == '取消':
@@ -389,6 +464,7 @@ class MyApp:
         pyperclip.copy(cur_path)
 
     def import_app(self):
+        result = False
         file = sg.popup_get_file(message='导入文件', title='选择导入文件', keep_on_top=True)
         if file:
             with open(str(file), "r", encoding='utf8') as file:
@@ -401,9 +477,13 @@ class MyApp:
                         app_path = os.path.join(tab_path, app)
                         if not os.path.exists(app_path):
                             os.mkdir(app_path)
+            result = True
+        if result:
             self.update()
+        return result
 
     def export_app(self):
+        result = False
         directory = sg.popup_get_folder(message='导出路径', title='选择导出路径', keep_on_top=True)
         if directory:
             file_path = os.path.join(directory, 'workhelper.yml')
@@ -416,12 +496,16 @@ class MyApp:
                 app_cfg[tab] = apps
             with open(file_path, 'w', encoding='utf-8') as file:
                 yaml.dump(app_cfg, file, allow_unicode=True)
-
-    @staticmethod
-    def manage_app(self):
-        pass
+            result = True
+        return result
 
     def select_app_root(self):
         root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
         if os.path.isdir(root):
             self.update(root)
+
+    @staticmethod
+    def set_env(key, value):
+        if os.getenv(key) != value:
+            command = f'start /b setx {key} {value}'.format(key=key, value=value)
+            os.popen(command)
