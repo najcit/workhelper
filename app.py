@@ -3,6 +3,7 @@
 import contextlib
 import copy
 import os
+import random
 import re
 import PySimpleGUI as sg
 import psgtray as pt
@@ -22,21 +23,22 @@ class MyApp:
     version = None
     root = None
     theme = None
-    enable_tray = False
+    enable_systray = False
     enable_env = False
     window = None
     systray = None
     location = None
-    filter_cond = {}
-    app_info = None
+    filter_cond = None
+    apps_info = None
     event_functions = None
 
-    def __init__(self, root, theme, enable_tray, enable_env, location, name=None):
+    def __init__(self, root, theme, enable_systray, enable_env, location, name=None):
         self.name = name if name is not None else '工作助手'
         self.version = '1.0.0'
+        self.icon = 'workhelper.ico'
         self.root = root
         self.theme = theme
-        self.enable_tray = enable_tray
+        self.enable_systray = enable_systray
         self.enable_env = enable_env
         self.location = location
         self.updater = AppUpdater()
@@ -67,8 +69,8 @@ class MyApp:
         }
 
     @staticmethod
-    def show(root, theme, enable_tray, enable_env, location=None):
-        app = MyApp(root, theme, enable_tray, enable_env, location)
+    def show(root, theme, enable_systray, enable_env, location=None):
+        app = MyApp(root, theme, enable_systray, enable_env, location)
         app.init()
         app.run()
 
@@ -121,39 +123,51 @@ class MyApp:
         layout += [sg.Input(enable_events=True, key='-CONTENT-', expand_x=True),
                    sg.Button('搜索', bind_return_key=True)],
         whole = '全部应用'
-        app_info = {whole: []}
+        apps_info = {whole: []}
         for parent, directorys, _files in os.walk(self.root):
             sub_root = parent.replace(self.root + os.path.sep, '')
             if parent != self.root and sub_root.find(os.path.sep) == -1:
-                if parent not in app_info:
-                    app_info[parent] = []
-                app_info[parent] += [os.path.join(parent, directory) for directory in directorys]
-                app_info[whole] += [os.path.join(parent, directory) for directory in directorys]
-        self.app_info = app_info
-        filter_tab = self.filter_cond['tab'] if len(self.filter_cond) > 0 else ''
-        filter_content = self.filter_cond['content'] if len(self.filter_cond) > 0 else ''
+                if parent not in apps_info:
+                    apps_info[parent] = []
+                apps = [{
+                    'name': directory,
+                    'path': os.path.join(parent, directory),
+                    'icon': os.path.join(os.getcwd(), 'images', 'robot_' + str(random.randrange(1, 6)) + '.png'),
+                } for directory in directorys]
+                apps_info[parent] += apps
+                apps_info[whole] += apps
+        self.apps_info = apps_info
+        filter_tab = self.filter_cond['tab'] if self.filter_cond and len(self.filter_cond) > 0 else ''
+        filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
         tabs = []
         keys = []
-        max_num_per_row = max(math.ceil(len(app_info) / 2), 4)
+        max_num_per_row = max(math.floor(len(apps_info) / 2), 4)
         app_right_click_menu = [['右击菜单'], ['执行应用', '修改应用', '删除应用', '打开应用路径', '复制应用路径']]
         tab_right_click_menu = [['右击菜单'], ['修改标签', '删除标签', '新建应用', '刷新']]
-        for tab, apps in app_info.items():
+        for tab, apps in apps_info.items():
             tab_name = os.path.basename(tab).ljust(4, ' ')
             tab_key = tab
             tab_layout = []
             row_layout = []
             is_filter = True if tab_key == filter_tab else False
             for app in apps:
-                app_name = os.path.basename(app)
-                app_key = tab + '#' + app
-                button = sg.Button(app_name, tooltip=app_name, key=app_key, size=(12, 2), mouseover_colors='blue',
-                                   enable_events=True, right_click_menu=app_right_click_menu)
+                app_name = app['name']
+                app_icon = app['icon']
+                app_key = tab + '#' + app['path']
+                button = sg.Button(button_text=app_name, tooltip=app_name, key=app_key, size=(18, 1), font=12,
+                                   button_color=('black', 'white'), enable_events=True, border_width=0,
+                                   right_click_menu=app_right_click_menu, expand_x=True, expand_y=True)
+                if os.path.isfile(app_icon):
+                    icon = sg.Image(source=app_icon, size=(64, 64), background_color='white')
+                    col = sg.Column([[icon, button]], background_color='white')
+                else:
+                    col = sg.Column([[button]], background_color='white')
                 if is_filter:
                     if re.search(filter_content, app_name, re.IGNORECASE):
-                        row_layout.append(button)
+                        row_layout.append(col)
                         keys.append(app_key)
                 else:
-                    row_layout.append(button)
+                    row_layout.append(col)
                     keys.append(app_key)
 
                 if len(row_layout) == max_num_per_row:
@@ -168,10 +182,10 @@ class MyApp:
         layout += [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
         if self.location:
             self.window = sg.Window(self.name, layout, location=self.location, enable_close_attempted_event=True,
-                                    resizable=True, finalize=True)
+                                    resizable=True, finalize=True, icon=self.icon)
         else:
             self.window = sg.Window(self.name, layout, enable_close_attempted_event=True, resizable=True,
-                                    finalize=True)
+                                    finalize=True, icon=self.icon)
         self.window.set_min_size(self.window.size)
         if filter_tab:
             self.window[filter_tab].select()
@@ -184,8 +198,9 @@ class MyApp:
 
     def init_systray(self):
         menu = ['后台菜单', ['显示界面', '隐藏界面', '退出']]
-        if self.enable_tray and self.window:
-            self.systray = pt.SystemTray(menu, single_click_events=False, window=self.window, tooltip=self.name)
+        if self.enable_systray and self.window:
+            self.systray = pt.SystemTray(menu, icon=self.icon, window=self.window, tooltip=self.name,
+                                         single_click_events=False)
         return self.systray
 
     def read(self, timeout=None, timeout_key=sg.TIMEOUT_KEY, close=False):
@@ -252,6 +267,7 @@ class MyApp:
                     value = '最新版软件下载已完成。'
                     progressbar.update(value=value)
                     self.window.write_event_value((THREAD_KEY, DL_END_KEY), percentage)
+
             self.window.start_thread(lambda: self.updater.install(update_progress_func=update_progress), ())
 
     def about(self, **_kwargs):
@@ -261,10 +277,10 @@ class MyApp:
     def new_window(self, **_kwargs):
         location_x, location_y = self.window.current_location()
         location = (location_x + 20, location_y + 20)
-        MyApp.show(self.root, self.theme, self.enable_tray, self.enable_env, location)
+        MyApp.show(self.root, self.theme, self.enable_systray, self.enable_env, location)
 
     def manage_tab(self):
-        values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
+        values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
         cur_tab = os.path.basename(self.window['-TAB-GROUP-'].get())
         col1 = sg.Column([[sg.Listbox(values, key='-TAB-LIST-', default_values=[cur_tab],
                                       select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, enable_events=True, size=(30, 40))]],
@@ -325,7 +341,7 @@ class MyApp:
                     window['-TAB-LIST-'].update(values)
             elif event == '-IMPORT-':
                 if self.import_app():
-                    values = [os.path.basename(tab) for tab, _ in self.app_info.items()]
+                    values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
                     window['-TAB-LIST-'].update(values)
             elif event == '-EXPORT-':
                 self.export_app()
@@ -538,11 +554,11 @@ class MyApp:
         if directory:
             file_path = os.path.join(directory, 'workhelper.yml')
             app_cfg = {}
-            for tab, apps in self.app_info.items():
+            for tab, apps in self.apps_info.items():
                 if tab == '全部应用':
                     continue
                 tab = os.path.basename(tab)
-                apps = [os.path.basename(app) for app in apps]
+                apps = [app['name'] for app in apps]
                 app_cfg[tab] = apps
             with open(file_path, 'w', encoding='utf-8') as file:
                 yaml.dump(app_cfg, file, allow_unicode=True)
