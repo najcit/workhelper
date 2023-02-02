@@ -5,8 +5,6 @@ import copy
 import os
 import random
 import re
-import time
-
 import PySimpleGUI as sg
 import psgtray as pt
 import math
@@ -15,6 +13,7 @@ import pyperclip
 import winshell
 import yaml
 from appupdater import AppUpdater
+from time import localtime, strftime
 
 ALL_TAG = '全部应用'
 E_THREAD_KEY = '-THREAD-'
@@ -67,6 +66,7 @@ class MyApp:
     location = None
     filter_cond = None
     apps_info = None
+    app_keys = []
     event_functions = None
     event_hotkeys = None
 
@@ -118,12 +118,11 @@ class MyApp:
     def run(self):
         while True:
             event, values = self.read()
-            print(event, values, isinstance(event, tuple), type(event), len(event) > 1)
+            print(event, values, isinstance(event, tuple), type(event))
             if event in self.event_functions and callable(self.event_functions[event]):
                 # noinspection PyArgumentList
                 self.event_functions[event](event=event, values=values)
             else:
-                print(event, values, isinstance(event, tuple), type(event), len(event) > 1)
                 if isinstance(event, str) and event.endswith('Click'):
                     self.select_app(event=event)
                 elif isinstance(event, tuple) and event == (E_THREAD_KEY, E_DL_END_KEY):
@@ -132,69 +131,74 @@ class MyApp:
                 else:
                     self.run_app()
 
-    def init_window(self):
-        sg.theme(self.theme)
-        show_icon = E_SHOW_ICON if self.list_view else '!'+E_SHOW_ICON
-        show_list = E_SHOW_LIST if not self.list_view else '!'+E_SHOW_LIST
-        menu_def = [[E_FILE, [E_NEW_WINDOW, E_CLOSE_WINDOW, E_IMPORT_APP_INFO,
-                              E_EXPORT_APP_INFO, E_QUIT_WITH_HOTKEY]],
-                    [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
-                    [E_VIEW, [show_icon, show_list]],
-                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
-                    [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
-        layout = [[sg.Menu(menu_def, key='-MENUBAR-')]]
-
-        layout += [sg.Input(enable_events=False, key='-CONTENT-', expand_x=True),
-                   sg.Button(E_SEARCH, bind_return_key=True)],
-        filter_tab = self.filter_cond['tab'] if self.filter_cond and len(self.filter_cond) > 0 else ''
-        filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
-        keys = []
+    def init_window_content(self, filter_tag, filter_content):
         tab_group = {}
         max_num_per_row = 1 if self.list_view else max(math.floor(len(self.apps_info) / 2), 4)
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tab_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_ADD_APP, E_REFRESH]]
-        for tab, apps in self.apps_info.items():
+        for tag, apps in self.apps_info.items():
             tab_layout = []
             row_layout = []
-            is_filter = True if tab == filter_tab else False
+            is_filter = True if tag == filter_tag else False
             for app in apps:
+                col_layout = []
                 app_name = app['name']
                 app_icon = app['icon']
-                app_key = tab + '#' + app['path']
-                col_layout = []
-                icon = sg.Image(source=app_icon, background_color='white') if os.path.isfile(app_icon) else None
-                if icon:
+                app_path = app['path']
+                app_key = app['key']
+                if os.path.isfile(app_icon):
+                    icon = sg.Image(source=app_icon, tooltip=app_name, key='[icon]'+app_key, enable_events=True,
+                                    background_color='white', right_click_menu=app_right_click_menu)
                     col_layout.append(icon)
                 button = sg.Button(button_text=app_name[:20], tooltip=app_name, key=app_key, size=(20, 1),
-                                   button_color=('black', 'white'), enable_events=True, border_width=0,
-                                   right_click_menu=app_right_click_menu)
+                                   button_color=('black', 'white'), enable_events=False, border_width=0,
+                                   right_click_menu=app_right_click_menu, expand_y=True)
                 col_layout.append(button)
                 if self.list_view:
-                    path_text = sg.Text(app['path'], tooltip=app['path'], size=(35, 1),
-                                        justification='left', background_color='white')
-                    col_layout.append(path_text)
-                    time_text = sg.Text(app['time'], background_color='white')
-                    col_layout.append(time_text)
-                    col = sg.Column([col_layout], background_color='white', expand_y=True, expand_x=True)
+                    path = sg.Text(text=app_path[:35], tooltip=app_path, size=(35, 1), justification='left',
+                                   background_color='white', enable_events=True)
+                    col_layout.append(path)
+                    time = sg.Text(app['time'], background_color='white')
+                    col_layout.append(time)
+                    col = sg.Column([col_layout], background_color='white', expand_y=True, expand_x=True,
+                                    right_click_menu=app_right_click_menu, grab=True)
                 else:
                     col = sg.Column([col_layout], background_color='white')
                 if (is_filter and re.search(filter_content, app_name, re.IGNORECASE)) or not is_filter:
                     row_layout.append(col)
-                    keys.append(app_key)
+                    self.app_keys.append(app_key)
                 if len(row_layout) == max_num_per_row:
                     tab_layout.append(copy.deepcopy(row_layout))
                     row_layout.clear()
             else:
                 if len(row_layout) > 0:
                     tab_layout.append(row_layout)
-            tab_group[tab] = [[sg.Column(layout=tab_layout, scrollable=True, vertical_scroll_only=True,
+            tab_group[tag] = [[sg.Column(layout=tab_layout, scrollable=True, vertical_scroll_only=True,
                                          expand_x=True, expand_y=True)]]
         tab_group_layout = [[sg.Tab(title=os.path.basename(tab_key), layout=tab_layout, key=tab_key,
                                     right_click_menu=tab_right_click_menu)
                              for tab_key, tab_layout in tab_group.items()]]
-        layout += [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
-                                right_click_menu=tab_right_click_menu)]]
-        layout += [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
+        return [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
+                             right_click_menu=tab_right_click_menu)]]
+
+    def init_window(self):
+        sg.theme(self.theme)
+        show_icon = E_SHOW_ICON if self.list_view else '!' + E_SHOW_ICON
+        show_list = E_SHOW_LIST if not self.list_view else '!' + E_SHOW_LIST
+        menu_def = [[E_FILE, [E_NEW_WINDOW, E_CLOSE_WINDOW, E_IMPORT_APP_INFO, E_EXPORT_APP_INFO, E_QUIT_WITH_HOTKEY]],
+                    [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
+                    [E_VIEW, [show_icon, show_list]],
+                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
+                    [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
+        layout = [[sg.Menu(menu_def, key='-MENU-BAR-')]]
+        col_layout = [[sg.Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
+                       sg.Button(E_SEARCH, key='-SEARCH-', bind_return_key=True)]]
+        layout += [[sg.Column(col_layout, expand_x=True)]]
+        filter_tag = self.filter_cond['tab'] if self.filter_cond and len(self.filter_cond) > 0 else ''
+        filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
+        layout += self.init_window_content(filter_tag, filter_content)
+        col_layout = [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
+        layout += [[sg.Column(col_layout, expand_x=True)]]
         if self.location:
             self.window = sg.Window(self.name, layout, location=self.location, enable_close_attempted_event=True,
                                     resizable=True, finalize=True, icon=self.icon, font='Courier 12',
@@ -204,12 +208,13 @@ class MyApp:
                                     finalize=True, icon=self.icon, font='Courier 12', element_justification='top')
         # self.window.set_min_size(self.window.size)
         self.location = self.window.current_location()
-        if filter_tab:
-            self.window[filter_tab].select()
+        if filter_tag:
+            self.window[filter_tag].select()
         if filter_content:
             self.window['-CONTENT-'].update(filter_content)
-        for key in keys:
+        for key in self.app_keys:
             self.window[key].bind('<Button-1>', ' LeftClick')
+            self.window[key].bind('<Button-2>', ' MiddleClick')
             self.window[key].bind('<Button-3>', ' RightClick')
         self.bind_hotkeys()
         return self.window
@@ -609,12 +614,13 @@ class MyApp:
                     apps_info[parent] = []
 
                 def timestamp_to_datetime(time_stamp, format_string="%Y-%m-%d %H:%M:%S"):
-                    time_array = time.localtime(time_stamp)
-                    str_date = time.strftime(format_string, time_array)
+                    time_array = localtime(time_stamp)
+                    str_date = strftime(format_string, time_array)
                     return str_date
 
                 apps = [{
                     'name': directory,
+                    'key': parent + '#' + os.path.join(parent, directory),
                     'path': os.path.join(parent, directory),
                     'icon': os.path.join(os.getcwd(), 'images', 'robot_' + str(random.randrange(1, 6)) + '.png'),
                     'time': timestamp_to_datetime(os.path.getmtime(os.path.join(parent, directory))),
