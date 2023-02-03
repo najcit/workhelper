@@ -6,6 +6,8 @@ import glob
 import os
 import random
 import re
+import sys
+
 import PySimpleGUI as sg
 import psgtray as pt
 import math
@@ -13,29 +15,18 @@ import shutil
 import pyperclip
 import winshell
 import yaml
-from appupdater import AppUpdater
 from time import localtime, strftime
 from enum import Enum
+from appupdater import AppUpdater
+from appdatabase import AppDatabase
 
 
-class SortType(Enum):
-    DEFAULT = 1
-    ASCEND = 2
-    DESCEND = 3
-
-
-ALL_TAG = '全部应用'
-E_THREAD_KEY = '-THREAD-'
-E_DL_END_KEY = '-DOWNLOAD-END-'
-E_SHOW = '显示界面'
-E_HIDE = '隐藏界面'
-E_QUIT = '退出'
-E_QUIT_WITH_HOTKEY = '退出(&Q)'
 E_FILE = '文件(&F)'
 E_NEW_WINDOW = '新建窗口(&N)'
 E_CLOSE_WINDOW = '关闭窗口(&E)'
 E_IMPORT_APP_INFO = '导入应用信息(&I)'
 E_EXPORT_APP_INFO = '导出应用信息(&X)'
+E_QUIT = '退出(&Q)'
 E_EDIT = '编辑(&E)'
 E_MANAGE_TAG = '管理标签(&M)'
 E_ADD_TAG = '新建标签(&N)'
@@ -61,14 +52,35 @@ E_RUN_APP = '运行应用(&R)'
 E_OPEN_APP_PATH = '打开应用路径(&O)'
 E_COPY_APP_PATH = '复制应用路径(&C)'
 E_SEARCH = '搜索'
+E_THREAD = '-THREAD-'
+E_DOWNLOAD_END = '-DOWNLOAD-END-'
+E_SYSTRAY_SHOW = '显示界面'
+E_SYSTRAY_HIDE = '隐藏界面'
+E_SYSTRAY_QUIT = '退出'
+
+APP_CHN_TITLE = '工作助手'
+APP_ENG_TITLE = 'Work Helper'
+APP_TITLE = APP_CHN_TITLE
+APP_ICON = 'workhelper.ico'
+APP_DB = 'workhelper.db'
+APP_VERSION = '1.0.0'
+ALL_TAG = '全部应用'
+
+
+class SortType(Enum):
+    DEFAULT = 1
+    ASCEND = 2
+    DESCEND = 3
+    PREFERRED = 4
 
 
 class MyApp:
 
     def __init__(self, root, theme, enable_systray, enable_env, location, name=None):
-        self.name = name if name is not None else '工作助手'
-        self.version = '1.0.0'
-        self.icon = 'workhelper.ico'
+        self.name = name if name is not None else APP_TITLE
+        self.version = APP_VERSION
+        self.icon = APP_ICON
+        self.app_db = APP_DB
         self.root = root
         self.theme = theme
         self.enable_systray = enable_systray
@@ -81,6 +93,7 @@ class MyApp:
         self.window = None
         self.systray = None
         self.updater = AppUpdater()
+        self.database = AppDatabase(self.app_db)
         self.apps_info = self.init_apps_info()
         self.event_functions = self.init_event_functions()
         self.event_hotkeys = self.init_event_hotkeys()
@@ -125,8 +138,7 @@ class MyApp:
             else:
                 if isinstance(event, str) and event.endswith('Click'):
                     self.select_app(event=event)
-                elif isinstance(event, tuple) and event == (E_THREAD_KEY, E_DL_END_KEY):
-                    print(event, values)
+                elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
                     self.exit()
                 else:
                     self.run_app()
@@ -152,12 +164,12 @@ class MyApp:
             self.window.hide()
             self.systray.show_icon()
         else:
-            self.close()
-            exit(0)
+            self.exit()
 
     def exit(self, **_kwargs):
+        self.database.close()
         self.close()
-        exit(0)
+        sys.exit(0)
 
     def select_theme(self, **_kwargs):
         cur_theme = self.theme
@@ -194,7 +206,7 @@ class MyApp:
                 if percentage >= 100:
                     value = '最新版软件下载已完成。'
                     progressbar.update(value=value)
-                    self.window.write_event_value((E_THREAD_KEY, E_DL_END_KEY), percentage)
+                    self.window.write_event_value((E_THREAD, E_DOWNLOAD_END), percentage)
 
             self.window.start_thread(lambda: self.updater.install(update_progress_func=update_progress), ())
 
@@ -458,6 +470,7 @@ class MyApp:
                         app = os.path.join(app_dir, app_name)
                         os.popen(app)
                         break
+            self.database.start_app(app_dir)
 
     def copy_app_path(self, **_kwargs):
         item = self.window.find_element_with_focus()
@@ -518,7 +531,7 @@ class MyApp:
         sg.theme(self.theme)
         show_icon = E_SHOW_ICON if self.list_view else '!' + E_SHOW_ICON
         show_list = E_SHOW_LIST if not self.list_view else '!' + E_SHOW_LIST
-        menu_def = [[E_FILE, [E_NEW_WINDOW, E_CLOSE_WINDOW, E_IMPORT_APP_INFO, E_EXPORT_APP_INFO, E_QUIT_WITH_HOTKEY]],
+        menu_def = [[E_FILE, [E_NEW_WINDOW, E_CLOSE_WINDOW, E_IMPORT_APP_INFO, E_EXPORT_APP_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
                     [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
@@ -602,7 +615,7 @@ class MyApp:
                              right_click_menu=tag_right_click_menu)]]
 
     def init_systray(self):
-        menu = [[], [E_SHOW, E_HIDE, E_QUIT]]
+        menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
         if self.enable_systray and self.window:
             self.systray = pt.SystemTray(menu, icon=self.icon, window=self.window, tooltip=self.name,
                                          single_click_events=False)
@@ -632,11 +645,11 @@ class MyApp:
         event_func = {
             sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED: self.show_top,
             sg.WIN_CLOSE_ATTEMPTED_EVENT: self.attempt_exit,
-            E_SHOW: self.show_top,
-            E_HIDE: self.attempt_exit,
-            E_QUIT: self.exit,
+            E_SYSTRAY_SHOW: self.show_top,
+            E_SYSTRAY_HIDE: self.attempt_exit,
+            E_SYSTRAY_QUIT: self.exit,
             E_CLOSE_WINDOW: self.attempt_exit,
-            E_QUIT_WITH_HOTKEY: self.exit,
+            E_QUIT: self.exit,
             E_CHECK_UPDATE: self.check_update,
             E_ABOUT: self.about,
             E_NEW_WINDOW: self.new_window,
@@ -670,7 +683,7 @@ class MyApp:
     @staticmethod
     def init_event_hotkeys():
         return {
-            E_QUIT: ['<Control-q>', '<Control-Q>'],
+            E_SYSTRAY_QUIT: ['<Control-q>', '<Control-Q>'],
             E_CLOSE_WINDOW: ['<Control-e>', '<Control-E>'],
             E_CHECK_UPDATE: ['<Control-u>', '<Control-U>'],
             E_ABOUT: ['<Control-a>', '<Control-A>'],
@@ -708,4 +721,3 @@ class MyApp:
         time_array = localtime(time_stamp)
         str_date = strftime(format_string, time_array)
         return str_date
-
