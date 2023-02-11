@@ -6,13 +6,14 @@ import glob
 import os
 import random
 import re
-import sys
 
 import PySimpleGUI as sg
 import psgtray as pt
 import math
 import shutil
 import pyperclip
+import win32con
+import win32gui
 import winshell
 import yaml
 from time import localtime, strftime
@@ -21,10 +22,9 @@ from appupdater import AppUpdater
 from appdatabase import AppDatabase
 
 E_FILE = '文件(&F)'
-E_NEW_WINDOW = '新建窗口(&N)'
-E_CLOSE_WINDOW = '关闭窗口(&E)'
-E_IMPORT_APP_INFO = '导入应用信息(&I)'
-E_EXPORT_APP_INFO = '导出应用信息(&X)'
+E_CLOSE_WINDOW = '关闭窗口(&C)'
+E_IMPORT_APPS_INFO = '导入应用信息(&I)'
+E_EXPORT_APPS_INFO = '导出应用信息(&X)'
 E_QUIT = '退出(&Q)'
 E_EDIT = '编辑(&E)'
 E_MANAGE_TAG = '管理标签(&M)'
@@ -59,11 +59,14 @@ E_SYSTRAY_QUIT = '退出'
 
 APP_CHN_TITLE = '工作助手'
 APP_ENG_TITLE = 'Work Helper'
+ALL_APP_CHN = '全部应用'
+ALL_APP_ENG = 'All App'
+
 APP_TITLE = APP_CHN_TITLE
+ALL_APP = ALL_APP_CHN
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
 APP_VERSION = '1.0.0'
-ALL_TAG = '全部应用'
 
 
 class SortType(Enum):
@@ -74,9 +77,10 @@ class SortType(Enum):
 
 
 class MyApp:
+    found_window = False
 
-    def __init__(self, root, theme, enable_systray, enable_env, location, name=None):
-        self.name = name if name is not None else APP_TITLE
+    def __init__(self, root, theme, enable_systray, enable_env, auto_update, **kwargs):
+        self.name = APP_TITLE
         self.version = APP_VERSION
         self.icon = APP_ICON
         self.app_db = APP_DB
@@ -84,18 +88,20 @@ class MyApp:
         self.theme = theme
         self.enable_systray = enable_systray
         self.enable_env = enable_env
-        self.location = location
-        self.app_icons = []
-        self.list_view = False
-        self.sort_type = SortType.DEFAULT
-        self.filter_cond = None
+        self.auto_update = auto_update
+        self.list_view = kwargs['list_view'] if 'list_view' in kwargs else False
+        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
+        self.sort_type = kwargs['sort_type'] if 'sort_type' in kwargs else None
+        self.location = kwargs['location'] if 'location' in kwargs else None
         self.window = None
         self.systray = None
         self.updater = AppUpdater()
         self.database = AppDatabase(self.app_db)
+        self.app_icons = self.init_apps_icon()
         self.apps_info = self.init_apps_info()
         self.event_functions = self.init_event_functions()
         self.event_hotkeys = self.init_event_hotkeys()
+        self.init()
 
     def init(self):
         if self.enable_env:
@@ -109,7 +115,7 @@ class MyApp:
         return self
 
     def run(self):
-        while True:
+        while self.window:
             event, values = self.window.read(timeout_key=sg.TIMEOUT_KEY)
             if self.systray and event == self.systray.key:
                 event = values[event]
@@ -128,15 +134,10 @@ class MyApp:
     def close(self):
         if self.window:
             self.window.close()
+            self.window = None
         if self.systray:
             self.systray.close()
-
-    @staticmethod
-    def show(root, theme, enable_systray, enable_env, location=None):
-        app = MyApp(root, theme, enable_systray, enable_env, location)
-        app.init()
-        app.run()
-        app.close()
+            self.systray = None
 
     def refresh(self, root=None, theme=None, filter_cond=None, location=None, **_kwargs):
         self.close()
@@ -161,7 +162,7 @@ class MyApp:
     def exit(self, **_kwargs):
         self.database.close()
         self.close()
-        sys.exit(0)
+        # sys.exit(0)
 
     def show_top(self, **_kwargs):
         self.window.un_hide()
@@ -214,10 +215,6 @@ class MyApp:
     def about(self, **_kwargs):
         text = '''\n当前已是最新版本: {version}\nCopyright © 2023–2026 by lidajun\n'''.format(version=self.version)
         sg.popup_no_buttons(text, title=self.name, auto_close=True, auto_close_duration=10)
-
-    def new_window(self, **_kwargs):
-        location = (self.location[0] + 20, self.location[1] + 20)
-        MyApp.show(self.root, self.theme, self.enable_systray, self.enable_env, location)
 
     def import_apps_info(self, **_kwargs):
         result = False
@@ -493,6 +490,8 @@ class MyApp:
             os.startfile(cur_path)
 
     def run_app(self, **_kwargs):
+        if not self.window:
+            return
         item = self.window.find_element_with_focus()
         if str(item).find('Button') > -1:
             app_key = item.key
@@ -538,7 +537,7 @@ class MyApp:
         sg.theme(self.theme)
         show_icon = E_SHOW_ICON if self.list_view else '!' + E_SHOW_ICON
         show_list = E_SHOW_LIST if not self.list_view else '!' + E_SHOW_LIST
-        menu_def = [[E_FILE, [E_NEW_WINDOW, E_CLOSE_WINDOW, E_IMPORT_APP_INFO, E_EXPORT_APP_INFO, E_QUIT]],
+        menu_def = [[E_FILE, [E_CLOSE_WINDOW, E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
                     [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
@@ -626,9 +625,7 @@ class MyApp:
                              right_click_menu=tag_right_click_menu)]]
 
     def init_apps_info(self):
-        if not self.app_icons:
-            self.app_icons = glob.glob(os.path.join(os.getcwd(), 'images', '*.png'))
-        apps_info = {ALL_TAG: []}
+        apps_info = {ALL_APP: []}
         for parent, directorys, _files in os.walk(self.root):
             sub_root = parent.replace(self.root + os.path.sep, '')
             if parent != self.root and sub_root.find(os.path.sep) == -1:
@@ -642,7 +639,7 @@ class MyApp:
                     'time': self.timestamp_to_datetime(os.path.getmtime(os.path.join(parent, directory))),
                 } for directory in directorys]
                 apps_info[parent] += apps
-                apps_info[ALL_TAG] += apps
+                apps_info[ALL_APP] += apps
         return apps_info
 
     def init_event_functions(self):
@@ -656,9 +653,8 @@ class MyApp:
             E_QUIT: self.exit,
             E_CHECK_UPDATE: self.check_update,
             E_ABOUT: self.about,
-            E_NEW_WINDOW: self.new_window,
-            E_IMPORT_APP_INFO: self.import_apps_info,
-            E_EXPORT_APP_INFO: self.export_apps_info,
+            E_IMPORT_APPS_INFO: self.import_apps_info,
+            E_EXPORT_APPS_INFO: self.export_apps_info,
             E_SHOW_ICON: self.show_icon,
             E_SHOW_LIST: self.show_list,
             E_SELECT_ROOT: self.select_root,
@@ -685,15 +681,37 @@ class MyApp:
         return new_event_func
 
     @staticmethod
+    def start(root, theme, enable_systray, enable_env, auto_update, **kwargs):
+        app = MyApp(root, theme, enable_systray, enable_env, auto_update, **kwargs)
+        app.run()
+        app.close()
+
+    @staticmethod
+    def show(root, theme, enable_systray, enable_env, auto_update):
+        def show_window(hwnd, wildcard):
+            if re.match(wildcard, str(win32gui.GetWindowText(hwnd))):
+                win32gui.BringWindowToTop(hwnd)
+                win32gui.SetForegroundWindow(hwnd)
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                MyApp.found_window = True
+
+        win32gui.EnumWindows(show_window, APP_TITLE)
+        if not MyApp.found_window:
+            MyApp.start(root, theme, enable_systray, enable_env, auto_update)
+
+    @staticmethod
+    def init_apps_icon():
+        return glob.glob(os.path.join(os.getcwd(), 'images', '*.png'))
+
+    @staticmethod
     def init_event_hotkeys():
         return {
             E_SYSTRAY_QUIT: ['<Control-q>', '<Control-Q>'],
             E_CLOSE_WINDOW: ['<Control-e>', '<Control-E>'],
             E_CHECK_UPDATE: ['<Control-u>', '<Control-U>'],
             E_ABOUT: ['<Control-a>', '<Control-A>'],
-            E_NEW_WINDOW: ['<Control-n>', '<Control-N>'],
-            E_IMPORT_APP_INFO: ['<Control-i>', '<Control-I>'],
-            E_EXPORT_APP_INFO: ['<Control-x>', '<Control-X>'],
+            E_IMPORT_APPS_INFO: ['<Control-i>', '<Control-I>'],
+            E_EXPORT_APPS_INFO: ['<Control-x>', '<Control-X>'],
             E_SELECT_ROOT: ['<Control-o>', '<Control-O>'],
             E_SELECT_THEME: ['<Control-t>', '<Control-T>'],
             E_REFRESH: ['<F5>'],

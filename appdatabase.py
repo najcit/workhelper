@@ -53,5 +53,4 @@ class AppDatabase:
         self.db.commit()
 
     def close(self):
-        print('close')
         self.db.close()
