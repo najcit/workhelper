@@ -20,7 +20,6 @@ from enum import Enum
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
 
-
 E_FILE = '文件(&F)'
 E_NEW_WINDOW = '新建窗口(&N)'
 E_CLOSE_WINDOW = '关闭窗口(&E)'
@@ -35,7 +34,7 @@ E_VIEW = '视图(&V)'
 E_SHOW_ICON = '图标显示(&G)'
 E_SHOW_LIST = '列表显示(&L)'
 E_OPTION = '选项(&S)'
-E_SELECT_ROOT = '选择目录(&O)'
+E_SELECT_ROOT = '选择根目录(&O)'
 E_SELECT_THEME = '选择主题(&T)'
 E_SELECT_FONT = '选择字体(&F)'
 E_SET_WINDOW = '设置窗口(&W)'
@@ -98,12 +97,6 @@ class MyApp:
         self.event_functions = self.init_event_functions()
         self.event_hotkeys = self.init_event_hotkeys()
 
-    @staticmethod
-    def show(root, theme, enable_systray, enable_env, location=None):
-        app = MyApp(root, theme, enable_systray, enable_env, location)
-        app.init()
-        app.run()
-
     def init(self):
         if self.enable_env:
             with contextlib.suppress(Exception):
@@ -114,6 +107,36 @@ class MyApp:
         self.init_window()
         self.init_systray()
         return self
+
+    def run(self):
+        while True:
+            event, values = self.window.read(timeout_key=sg.TIMEOUT_KEY)
+            if self.systray and event == self.systray.key:
+                event = values[event]
+            print(event, values, isinstance(event, tuple), type(event))
+            if event in self.event_functions and callable(self.event_functions[event]):
+                # noinspection PyArgumentList
+                self.event_functions[event](event=event, values=values)
+            else:
+                if isinstance(event, str) and event.endswith('Click'):
+                    self.select_app(event=event)
+                elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
+                    self.exit()
+                else:
+                    self.run_app()
+
+    def close(self):
+        if self.window:
+            self.window.close()
+        if self.systray:
+            self.systray.close()
+
+    @staticmethod
+    def show(root, theme, enable_systray, enable_env, location=None):
+        app = MyApp(root, theme, enable_systray, enable_env, location)
+        app.init()
+        app.run()
+        app.close()
 
     def refresh(self, root=None, theme=None, filter_cond=None, location=None, **_kwargs):
         self.close()
@@ -128,37 +151,6 @@ class MyApp:
         self.init()
         return self
 
-    def run(self):
-        while True:
-            event, values = self.read()
-            print(event, values, isinstance(event, tuple), type(event))
-            if event in self.event_functions and callable(self.event_functions[event]):
-                # noinspection PyArgumentList
-                self.event_functions[event](event=event, values=values)
-            else:
-                if isinstance(event, str) and event.endswith('Click'):
-                    self.select_app(event=event)
-                elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
-                    self.exit()
-                else:
-                    self.run_app()
-
-    def read(self, timeout=None, timeout_key=sg.TIMEOUT_KEY, close=False):
-        event, values = self.window.read(timeout, timeout_key, close)
-        if self.systray and event == self.systray.key:
-            event = values[event]
-        return event, values
-
-    def close(self):
-        if self.window:
-            self.window.close()
-        if self.systray:
-            self.systray.close()
-
-    def show_top(self, **_kwargs):
-        self.window.un_hide()
-        self.window.bring_to_front()
-
     def attempt_exit(self, **_kwargs):
         if self.systray:
             self.window.hide()
@@ -170,6 +162,15 @@ class MyApp:
         self.database.close()
         self.close()
         sys.exit(0)
+
+    def show_top(self, **_kwargs):
+        self.window.un_hide()
+        self.window.bring_to_front()
+
+    def select_root(self, **_kwargs):
+        root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
+        if os.path.isdir(root):
+            self.refresh(root)
 
     def select_theme(self, **_kwargs):
         cur_theme = self.theme
@@ -217,6 +218,50 @@ class MyApp:
     def new_window(self, **_kwargs):
         location = (self.location[0] + 20, self.location[1] + 20)
         MyApp.show(self.root, self.theme, self.enable_systray, self.enable_env, location)
+
+    def import_apps_info(self, **_kwargs):
+        result = False
+        file = sg.popup_get_file(message='导入文件', title='选择导入文件', keep_on_top=True)
+        if file:
+            with open(str(file), "r", encoding='utf8') as file:
+                app_cfg = yaml.load(file, yaml.FullLoader)
+                for tab, apps in app_cfg.items():
+                    tab_path = os.path.join(self.root, tab)
+                    if not os.path.exists(tab_path):
+                        os.mkdir(tab_path)
+                    for app in apps:
+                        app_path = os.path.join(tab_path, app)
+                        if not os.path.exists(app_path):
+                            os.mkdir(app_path)
+            result = True
+        if result:
+            self.refresh()
+        return result
+
+    def export_apps_info(self, **_kwargs):
+        result = False
+        directory = sg.popup_get_folder(message='导出路径', title='选择导出路径', keep_on_top=True)
+        if directory:
+            file_path = os.path.join(directory, 'workhelper.yml')
+            app_cfg = {}
+            for tab, apps in self.apps_info.items():
+                if tab == '全部应用':
+                    continue
+                tab = os.path.basename(tab)
+                apps = [app['name'] for app in apps]
+                app_cfg[tab] = apps
+            with open(file_path, 'w', encoding='utf-8') as file:
+                yaml.dump(app_cfg, file, allow_unicode=True)
+            result = True
+        return result
+
+    def show_icon(self, **_kwargs):
+        self.list_view = False
+        self.refresh(location=self.location)
+
+    def show_list(self, **_kwargs):
+        self.list_view = True
+        self.refresh(location=self.location)
 
     def manage_tag(self, **_kwargs):
         values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
@@ -279,11 +324,11 @@ class MyApp:
                     values.remove(cur_tab)
                     window['-TAB-LIST-'].update(values)
             elif event == '-IMPORT-':
-                if self.import_app():
+                if self.import_apps_info():
                     values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
                     window['-TAB-LIST-'].update(values)
             elif event == '-EXPORT-':
-                self.export_app()
+                self.export_apps_info()
             elif event == '-TAB-LIST-':
                 tab = values[event][0]
                 disable_buttons(tab)
@@ -362,14 +407,6 @@ class MyApp:
         event = kwargs['event']
         key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
         self.window[key].set_focus()
-
-    def search(self, **kwargs):
-        values = kwargs['values']
-        tab = values['-TAB-GROUP-']
-        content = values['-CONTENT-']
-        filter_cond = {'tab': tab, 'content': content}
-        if filter_cond != self.filter_cond:
-            self.refresh(filter_cond=filter_cond)
 
     def add_app(self, tab_key=None, **kwargs):
         if tab_key is None:
@@ -478,54 +515,24 @@ class MyApp:
         cur_path = app_key.split('#')[1]
         pyperclip.copy(cur_path)
 
-    def import_app(self, **_kwargs):
-        result = False
-        file = sg.popup_get_file(message='导入文件', title='选择导入文件', keep_on_top=True)
-        if file:
-            with open(str(file), "r", encoding='utf8') as file:
-                app_cfg = yaml.load(file, yaml.FullLoader)
-                for tab, apps in app_cfg.items():
-                    tab_path = os.path.join(self.root, tab)
-                    if not os.path.exists(tab_path):
-                        os.mkdir(tab_path)
-                    for app in apps:
-                        app_path = os.path.join(tab_path, app)
-                        if not os.path.exists(app_path):
-                            os.mkdir(app_path)
-            result = True
-        if result:
-            self.refresh()
-        return result
+    def search(self, **kwargs):
+        values = kwargs['values']
+        tab = values['-TAB-GROUP-']
+        content = values['-CONTENT-']
+        filter_cond = {'tab': tab, 'content': content}
+        if filter_cond != self.filter_cond:
+            self.refresh(filter_cond=filter_cond)
 
-    def export_app(self, **_kwargs):
-        result = False
-        directory = sg.popup_get_folder(message='导出路径', title='选择导出路径', keep_on_top=True)
-        if directory:
-            file_path = os.path.join(directory, 'workhelper.yml')
-            app_cfg = {}
-            for tab, apps in self.apps_info.items():
-                if tab == '全部应用':
-                    continue
-                tab = os.path.basename(tab)
-                apps = [app['name'] for app in apps]
-                app_cfg[tab] = apps
-            with open(file_path, 'w', encoding='utf-8') as file:
-                yaml.dump(app_cfg, file, allow_unicode=True)
-            result = True
-        return result
-
-    def show_icon(self, **_kwargs):
-        self.list_view = False
-        self.refresh(location=self.location)
-
-    def show_list(self, **_kwargs):
-        self.list_view = True
-        self.refresh(location=self.location)
-
-    def select_root(self, **_kwargs):
-        root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
-        if os.path.isdir(root):
-            self.refresh(root)
+    def bind_hotkeys(self):
+        for tag, apps in self.apps_info.items():
+            for app in apps:
+                key = app['key']
+                self.window[key].bind('<Button-1>', ' LeftClick')
+                self.window[key].bind('<Button-2>', ' MiddleClick')
+                self.window[key].bind('<Button-3>', ' RightClick')
+        for event, hotkeys in self.event_hotkeys.items():
+            for hotkey in hotkeys:
+                self.window.bind(hotkey, event)
 
     def init_window(self):
         sg.theme(self.theme)
@@ -561,6 +568,13 @@ class MyApp:
         self.bind_hotkeys()
         return self.window
 
+    def init_systray(self):
+        menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
+        if self.enable_systray and self.window:
+            self.systray = pt.SystemTray(menu, icon=self.icon, window=self.window, tooltip=self.name,
+                                         single_click_events=False)
+        return self.systray
+
     def init_window_content(self, filter_tag, filter_content):
         tab_group = {}
         max_num_per_row = 1 if self.list_view else max(math.floor(len(self.apps_info) / 2), 4)
@@ -576,10 +590,7 @@ class MyApp:
                 apps = sorted(apps, key=lambda x: x['name'].upper(), reverse=True)
             for app in apps:
                 col_layout = []
-                app_name = app['name']
-                app_icon = app['icon']
-                app_path = app['path']
-                app_key = app['key']
+                app_name, app_icon, app_path, app_key = app['name'], app['icon'], app['path'], app['key']
                 if os.path.isfile(app_icon):
                     icon = sg.Image(source=app_icon, tooltip=app_name, key='[icon]' + app_key, enable_events=True,
                                     background_color='white', right_click_menu=app_right_click_menu)
@@ -614,13 +625,6 @@ class MyApp:
         return [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
                              right_click_menu=tag_right_click_menu)]]
 
-    def init_systray(self):
-        menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
-        if self.enable_systray and self.window:
-            self.systray = pt.SystemTray(menu, icon=self.icon, window=self.window, tooltip=self.name,
-                                         single_click_events=False)
-        return self.systray
-
     def init_apps_info(self):
         if not self.app_icons:
             self.app_icons = glob.glob(os.path.join(os.getcwd(), 'images', '*.png'))
@@ -653,8 +657,8 @@ class MyApp:
             E_CHECK_UPDATE: self.check_update,
             E_ABOUT: self.about,
             E_NEW_WINDOW: self.new_window,
-            E_IMPORT_APP_INFO: self.import_app,
-            E_EXPORT_APP_INFO: self.export_app,
+            E_IMPORT_APP_INFO: self.import_apps_info,
+            E_EXPORT_APP_INFO: self.export_apps_info,
             E_SHOW_ICON: self.show_icon,
             E_SHOW_LIST: self.show_list,
             E_SELECT_ROOT: self.select_root,
@@ -698,17 +702,6 @@ class MyApp:
             E_OPEN_APP_PATH: ['<Control-p>', '<Control-P>'],
             E_COPY_APP_PATH: ['<Control-c>', '<Control-C>'],
         }
-
-    def bind_hotkeys(self):
-        for tag, apps in self.apps_info.items():
-            for app in apps:
-                key = app['key']
-                self.window[key].bind('<Button-1>', ' LeftClick')
-                self.window[key].bind('<Button-2>', ' MiddleClick')
-                self.window[key].bind('<Button-3>', ' RightClick')
-        for event, hotkeys in self.event_hotkeys.items():
-            for hotkey in hotkeys:
-                self.window.bind(hotkey, event)
 
     @staticmethod
     def set_env(key, value):
