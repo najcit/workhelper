@@ -35,6 +35,7 @@ class AppDatabase:
         if not app:
             app = [{'name': app_name, 'count': 1, 'start_timestamp': time.time()}]
             apps.store(app)
+            self.db.commit()
         else:
             if 'count' not in app[0]:
                 app[0]['count'] = 1
@@ -42,7 +43,6 @@ class AppDatabase:
                 app[0]['count'] += 1
             apps.update(0, app[0])
         print(app)
-        self.db.commit()
 
     def stop_app(self, app_name):
         apps = self.db.collection('apps')

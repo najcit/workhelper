@@ -3,26 +3,24 @@
 import contextlib
 import copy
 import glob
+import math
 import os
 import random
 import re
-
-import PySimpleGUI as sg
 import psgtray as pt
-import math
+import PySimpleGUI as sg
 import shutil
 import pyperclip
 import win32con
 import win32gui
 import winshell
 import yaml
-from time import localtime, strftime
 from enum import Enum
+from time import localtime, strftime
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
 
 E_FILE = '文件(&F)'
-E_CLOSE_WINDOW = '关闭窗口(&C)'
 E_IMPORT_APPS_INFO = '导入应用信息(&I)'
 E_EXPORT_APPS_INFO = '导出应用信息(&X)'
 E_QUIT = '退出(&Q)'
@@ -50,23 +48,27 @@ E_RMV_APP = '删除应用(&D)'
 E_RUN_APP = '运行应用(&R)'
 E_OPEN_APP_PATH = '打开应用路径(&O)'
 E_COPY_APP_PATH = '复制应用路径(&C)'
-E_SEARCH = '搜索'
 E_THREAD = '-THREAD-'
 E_DOWNLOAD_END = '-DOWNLOAD-END-'
 E_SYSTRAY_SHOW = '显示界面'
 E_SYSTRAY_HIDE = '隐藏界面'
 E_SYSTRAY_QUIT = '退出'
 
-APP_CHN_TITLE = '工作助手'
-APP_ENG_TITLE = 'Work Helper'
+APP_TITLE_CHN = '工作助手'
+APP_TITLE_ENG = 'Work Helper'
 ALL_APP_CHN = '全部应用'
 ALL_APP_ENG = 'All App'
+E_SEARCH_CHN = '搜索'
+E_SEARCH_ENG = 'Search'
 
-APP_TITLE = APP_CHN_TITLE
+APP_TITLE = APP_TITLE_CHN
 ALL_APP = ALL_APP_CHN
+E_SEARCH = E_SEARCH_CHN
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
 APP_VERSION = '1.0.0'
+APP_DEFAULT_ROOT = 'root'
+APP_DEFAULT_THEME = 'DarkGreen7'
 
 
 class SortType(Enum):
@@ -84,32 +86,42 @@ class MyApp:
         self.version = APP_VERSION
         self.icon = APP_ICON
         self.app_db = APP_DB
-        self.root = root
-        self.theme = theme
         self.enable_systray = enable_systray
         self.enable_env = enable_env
         self.auto_update = auto_update
-        self.list_view = kwargs['list_view'] if 'list_view' in kwargs else False
-        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
-        self.sort_type = kwargs['sort_type'] if 'sort_type' in kwargs else None
-        self.location = kwargs['location'] if 'location' in kwargs else None
+        self.root = root if root and root != '' else os.path.join(os.getcwd(), APP_DEFAULT_ROOT)
+        self.theme = theme if theme and theme != '' else APP_DEFAULT_THEME
+        self.icon_path = os.path.join(os.getcwd(), 'images')
+        self.list_view = False
+        self.filter_cond = None
+        self.sort_type = None
+        self.location = None
+        self.apps_info = None
+        self.apps_icon = None
         self.window = None
         self.systray = None
         self.updater = AppUpdater()
         self.database = AppDatabase(self.app_db)
-        self.app_icons = self.init_apps_icon()
-        self.apps_info = self.init_apps_info()
         self.event_functions = self.init_event_functions()
         self.event_hotkeys = self.init_event_hotkeys()
-        self.init()
-
-    def init(self):
-        if self.enable_env:
-            with contextlib.suppress(Exception):
+        with contextlib.suppress(Exception):
+            if self.enable_env:
                 self.root = os.environ['MY_ROOT']
                 self.theme = os.environ['MY_THEME']
-        if self.root == 'root':
-            self.root = os.path.join(os.getcwd(), self.root)
+        self.init(root, theme, **kwargs)
+
+    def __del__(self):
+        print('delete')
+
+    def init(self, root=None, theme=None, **kwargs):
+        self.root = root if root and root != '' and root != self.root else self.root
+        self.theme = theme if theme and theme != '' and theme != self.theme else self.theme
+        self.list_view = kwargs['list_view'] if 'list_view' in kwargs else False
+        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
+        self.sort_type = kwargs['sort_type'] if 'sort_type' in kwargs else None
+        self.location = kwargs['location'] if 'location' in kwargs else None
+        self.apps_icon = self.init_apps_icon()
+        self.apps_info = self.init_apps_info()
         self.init_window()
         self.init_systray()
         return self
@@ -139,17 +151,19 @@ class MyApp:
             self.systray.close()
             self.systray = None
 
-    def refresh(self, root=None, theme=None, filter_cond=None, location=None, **_kwargs):
-        self.close()
+    def refresh(self, **kwargs):
+        root = kwargs['root'] if 'root' in kwargs else None
         if root and root != self.root:
             self.root = root
             self.set_env('MY_ROOT', self.root)
+        theme = kwargs['theme'] if 'theme' in kwargs else None
         if theme and theme != self.theme:
             self.theme = theme
             self.set_env('MY_THEME', self.theme)
-        self.filter_cond = filter_cond if filter_cond else None
-        self.location = location if location else None
-        self.init()
+        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
+        self.location = kwargs['location'] if 'location' in kwargs else None
+        self.close()
+        self.init(**kwargs)
         return self
 
     def attempt_exit(self, **_kwargs):
@@ -162,7 +176,6 @@ class MyApp:
     def exit(self, **_kwargs):
         self.database.close()
         self.close()
-        # sys.exit(0)
 
     def show_top(self, **_kwargs):
         self.window.un_hide()
@@ -171,7 +184,7 @@ class MyApp:
     def select_root(self, **_kwargs):
         root = sg.popup_get_folder(message='应用根目录', title='选择应用根目录', keep_on_top=True)
         if os.path.isdir(root):
-            self.refresh(root)
+            self.refresh(root=root)
 
     def select_theme(self, **_kwargs):
         cur_theme = self.theme
@@ -189,9 +202,8 @@ class MyApp:
                 break
         window.close()
         if cur_theme != self.theme:
-            self.theme = cur_theme
-            self.set_env('MY_THEME', self.theme)
-            self.refresh()
+            self.set_env('MY_THEME', cur_theme)
+            self.refresh(theme=cur_theme)
         return self
 
     def check_update(self, **_kwargs):
@@ -537,27 +549,26 @@ class MyApp:
         sg.theme(self.theme)
         show_icon = E_SHOW_ICON if self.list_view else '!' + E_SHOW_ICON
         show_list = E_SHOW_LIST if not self.list_view else '!' + E_SHOW_LIST
-        menu_def = [[E_FILE, [E_CLOSE_WINDOW, E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
+        menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
                     [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
                     [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
         layout = [[sg.Menu(menu_def, key='-MENU-BAR-')]]
         col_layout = [[sg.Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
-                       sg.Button(E_SEARCH, key='-SEARCH-', bind_return_key=True)]]
+                       sg.Button(E_SEARCH, key=E_SEARCH, bind_return_key=True)]]
         layout += [[sg.Column(col_layout, expand_x=True)]]
         filter_tag = self.filter_cond['tab'] if self.filter_cond and len(self.filter_cond) > 0 else ''
         filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
-        layout += self.init_window_content(filter_tag, filter_content)
+        layout += self.init_content(filter_tag, filter_content)
         col_layout = [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
         layout += [[sg.Column(col_layout, expand_x=True)]]
         if self.location:
             self.window = sg.Window(self.name, layout, location=self.location, enable_close_attempted_event=True,
-                                    resizable=True, finalize=True, icon=self.icon, font='Courier 12',
-                                    element_justification='top')
+                                    resizable=True, finalize=True, icon=self.icon, font='Courier 12')
         else:
-            self.window = sg.Window(self.name, layout, enable_close_attempted_event=True, resizable=True,
-                                    finalize=True, icon=self.icon, font='Courier 12', element_justification='top')
+            self.window = sg.Window(self.name, layout, enable_close_attempted_event=True,
+                                    resizable=True, finalize=True, icon=self.icon, font='Courier 12')
         self.window.set_min_size((300, 500))
         self.location = self.window.current_location()
         if filter_tag:
@@ -574,7 +585,7 @@ class MyApp:
                                          single_click_events=False)
         return self.systray
 
-    def init_window_content(self, filter_tag, filter_content):
+    def init_content(self, filter_tag, filter_content):
         tab_group = {}
         max_num_per_row = 1 if self.list_view else max(math.floor(len(self.apps_info) / 2), 4)
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
@@ -624,6 +635,9 @@ class MyApp:
         return [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
                              right_click_menu=tag_right_click_menu)]]
 
+    def init_apps_icon(self):
+        return glob.glob(os.path.join(self.icon_path, '*.png'))
+
     def init_apps_info(self):
         apps_info = {ALL_APP: []}
         for parent, directorys, _files in os.walk(self.root):
@@ -635,7 +649,7 @@ class MyApp:
                     'name': directory,
                     'key': parent + '#' + os.path.join(parent, directory),
                     'path': os.path.join(parent, directory),
-                    'icon': random.choice(self.app_icons),
+                    'icon': random.choice(self.apps_icon),
                     'time': self.timestamp_to_datetime(os.path.getmtime(os.path.join(parent, directory))),
                 } for directory in directorys]
                 apps_info[parent] += apps
@@ -649,7 +663,6 @@ class MyApp:
             E_SYSTRAY_SHOW: self.show_top,
             E_SYSTRAY_HIDE: self.attempt_exit,
             E_SYSTRAY_QUIT: self.exit,
-            E_CLOSE_WINDOW: self.attempt_exit,
             E_QUIT: self.exit,
             E_CHECK_UPDATE: self.check_update,
             E_ABOUT: self.about,
@@ -681,12 +694,6 @@ class MyApp:
         return new_event_func
 
     @staticmethod
-    def start(root, theme, enable_systray, enable_env, auto_update, **kwargs):
-        app = MyApp(root, theme, enable_systray, enable_env, auto_update, **kwargs)
-        app.run()
-        app.close()
-
-    @staticmethod
     def show(root, theme, enable_systray, enable_env, auto_update):
         def show_window(hwnd, wildcard):
             if re.match(wildcard, str(win32gui.GetWindowText(hwnd))):
@@ -700,14 +707,15 @@ class MyApp:
             MyApp.start(root, theme, enable_systray, enable_env, auto_update)
 
     @staticmethod
-    def init_apps_icon():
-        return glob.glob(os.path.join(os.getcwd(), 'images', '*.png'))
+    def start(root, theme, enable_systray, enable_env, auto_update, **kwargs):
+        app = MyApp(root, theme, enable_systray, enable_env, auto_update, **kwargs)
+        app.run()
+        app.close()
 
     @staticmethod
     def init_event_hotkeys():
         return {
             E_SYSTRAY_QUIT: ['<Control-q>', '<Control-Q>'],
-            E_CLOSE_WINDOW: ['<Control-e>', '<Control-E>'],
             E_CHECK_UPDATE: ['<Control-u>', '<Control-U>'],
             E_ABOUT: ['<Control-a>', '<Control-A>'],
             E_IMPORT_APPS_INFO: ['<Control-i>', '<Control-I>'],
