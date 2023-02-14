@@ -3,20 +3,25 @@
 import contextlib
 import copy
 import glob
-import math
 import os
 import random
 import re
+import winreg
+
 import psgtray as pt
 import PySimpleGUI as sg
 import shutil
 import pyperclip
 import win32con
 import win32gui
+import win32ui
 import winshell
 import yaml
 from enum import Enum
 from time import localtime, strftime
+
+from PIL import Image
+
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
 
@@ -34,6 +39,8 @@ E_SHOW_LIST = '列表显示(&L)'
 E_OPTION = '选项(&S)'
 E_SELECT_ROOT = '选择根目录(&O)'
 E_SELECT_THEME = '选择主题(&T)'
+E_SHOW_LOCAL_APPS = '显示本地应用(&S)'
+E_HIDE_LOCAL_APPS = '隐藏本地应用(&H)'
 E_SELECT_FONT = '选择字体(&F)'
 E_SET_WINDOW = '设置窗口(&W)'
 E_HELP = '帮助(&H)'
@@ -58,11 +65,14 @@ APP_TITLE_CHN = '工作助手'
 APP_TITLE_ENG = 'Work Helper'
 ALL_APP_CHN = '全部应用'
 ALL_APP_ENG = 'All App'
+LOCAL_APP_CHN = '本地应用'
+LOCAL_APP_ENG = 'Local App'
 E_SEARCH_CHN = '搜索'
 E_SEARCH_ENG = 'Search'
 
 APP_TITLE = APP_TITLE_CHN
 ALL_APP = ALL_APP_CHN
+LOCAL_APP = LOCAL_APP_CHN
 E_SEARCH = E_SEARCH_CHN
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
@@ -76,6 +86,11 @@ class SortType(Enum):
     ASCEND = 2
     DESCEND = 3
     PREFERRED = 4
+
+
+class ViewType(Enum):
+    ICON = 1
+    LIST = 2
 
 
 class MyApp:
@@ -92,12 +107,14 @@ class MyApp:
         self.root = root if root and root != '' else os.path.join(os.getcwd(), APP_DEFAULT_ROOT)
         self.theme = theme if theme and theme != '' else APP_DEFAULT_THEME
         self.icon_path = os.path.join(os.getcwd(), 'images')
-        self.list_view = False
+        self.show_view = ViewType.ICON
+        self.show_local_app_list = True
         self.filter_cond = None
         self.sort_type = None
         self.location = None
-        self.apps_info = None
-        self.apps_icon = None
+        self.app_list = None
+        self.app_icon_path = os.path.join(os.getcwd(), 'images', '32x32')
+        self.app_icon_list = None
         self.window = None
         self.systray = None
         self.updater = AppUpdater()
@@ -116,34 +133,29 @@ class MyApp:
     def init(self, root=None, theme=None, **kwargs):
         self.root = root if root and root != '' and root != self.root else self.root
         self.theme = theme if theme and theme != '' and theme != self.theme else self.theme
-        self.list_view = kwargs['list_view'] if 'list_view' in kwargs else False
+        self.show_view = kwargs['show_view'] if 'show_view' in kwargs else ViewType.ICON
         self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
         self.sort_type = kwargs['sort_type'] if 'sort_type' in kwargs else None
         self.location = kwargs['location'] if 'location' in kwargs else None
-        self.apps_icon = self.init_apps_icon()
-        self.apps_info = self.init_apps_info()
+        self.app_icon_list = self.init_app_icon_list()
+        self.app_list = self.init_app_list()
         self.init_window()
         self.init_systray()
         return self
 
+    # noinspection PyArgumentList
     def run(self):
         while self.window:
             event, values = self.window.read(timeout_key=sg.TIMEOUT_KEY)
             if self.systray and event == self.systray.key:
                 event = values[event]
             print(event, values, isinstance(event, tuple), type(event))
-            if event in self.event_functions and callable(self.event_functions[event]):
-                # noinspection PyArgumentList
+            if event in self.event_functions:
                 self.event_functions[event](event=event, values=values)
             else:
-                if isinstance(event, str) and event.endswith('Click'):
-                    self.select_app(event=event)
-                elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
-                    self.exit()
-                else:
-                    self.run_app()
+                self.event_functions['default'](event=event, values=values)
 
-    def close(self):
+    def destroy(self):
         if self.window:
             self.window.close()
             self.window = None
@@ -153,17 +165,9 @@ class MyApp:
 
     def refresh(self, **kwargs):
         root = kwargs['root'] if 'root' in kwargs else None
-        if root and root != self.root:
-            self.root = root
-            self.set_env('MY_ROOT', self.root)
         theme = kwargs['theme'] if 'theme' in kwargs else None
-        if theme and theme != self.theme:
-            self.theme = theme
-            self.set_env('MY_THEME', self.theme)
-        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
-        self.location = kwargs['location'] if 'location' in kwargs else None
-        self.close()
-        self.init(**kwargs)
+        self.destroy()
+        self.init(root, theme, **kwargs)
         return self
 
     def attempt_exit(self, **_kwargs):
@@ -175,7 +179,7 @@ class MyApp:
 
     def exit(self, **_kwargs):
         self.database.close()
-        self.close()
+        self.destroy()
 
     def show_top(self, **_kwargs):
         self.window.un_hide()
@@ -253,7 +257,7 @@ class MyApp:
         if directory:
             file_path = os.path.join(directory, 'workhelper.yml')
             app_cfg = {}
-            for tab, apps in self.apps_info.items():
+            for tab, apps in self.app_list.items():
                 if tab == '全部应用':
                     continue
                 tab = os.path.basename(tab)
@@ -265,15 +269,13 @@ class MyApp:
         return result
 
     def show_icon(self, **_kwargs):
-        self.list_view = False
-        self.refresh(location=self.location)
+        self.refresh(location=self.location, show_view=ViewType.ICON)
 
     def show_list(self, **_kwargs):
-        self.list_view = True
-        self.refresh(location=self.location)
+        self.refresh(location=self.location, show_view=ViewType.LIST)
 
     def manage_tag(self, **_kwargs):
-        values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
+        values = [os.path.basename(tab) for tab, _ in self.app_list.items()]
         cur_tab = os.path.basename(self.window['-TAB-GROUP-'].get())
         col1 = sg.Column([[sg.Listbox(values, key='-TAB-LIST-', default_values=[cur_tab],
                                       select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, enable_events=True, size=(30, 40))]],
@@ -334,7 +336,7 @@ class MyApp:
                     window['-TAB-LIST-'].update(values)
             elif event == '-IMPORT-':
                 if self.import_apps_info():
-                    values = [os.path.basename(tab) for tab, _ in self.apps_info.items()]
+                    values = [os.path.basename(tab) for tab, _ in self.app_list.items()]
                     window['-TAB-LIST-'].update(values)
             elif event == '-EXPORT-':
                 self.export_apps_info()
@@ -502,23 +504,20 @@ class MyApp:
             os.startfile(cur_path)
 
     def run_app(self, **_kwargs):
-        if not self.window:
-            return
         item = self.window.find_element_with_focus()
         if str(item).find('Button') > -1:
-            app_key = item.key
+            app_path = item.metadata
             with contextlib.suppress(Exception):
-                app_dir = app_key.split('#')[1]
-                for app_name in os.listdir(app_dir):
-                    if app_name.endswith('.lnk'):
-                        app = os.path.join(app_dir, app_name)
-                        os.startfile(app)
-                        break
-                    elif app_name.endswith('.exe'):
-                        app = os.path.join(app_dir, app_name)
-                        os.popen(app)
-                        break
-            self.database.start_app(app_dir)
+                if os.path.isfile(app_path):
+                    app = app_path
+                elif os.path.isdir(app_path):
+                    glob.glob('*.[lnk]')
+                    for app_name in os.listdir(app_path):
+                        if app_name.endswith((".lnk", ".exe")):
+                            app = os.path.join(app_path, app_name)
+                            break
+                os.startfile(app)
+                self.database.start_app(app_path)
 
     def copy_app_path(self, **_kwargs):
         item = self.window.find_element_with_focus()
@@ -526,16 +525,29 @@ class MyApp:
         cur_path = app_key.split('#')[1]
         pyperclip.copy(cur_path)
 
+    @staticmethod
+    def show_local_app_tag():
+        print('show')
+
     def search(self, **kwargs):
         values = kwargs['values']
-        tab = values['-TAB-GROUP-']
+        tag = values['-TAB-GROUP-']
         content = values['-CONTENT-']
-        filter_cond = {'tab': tab, 'content': content}
+        filter_cond = {'tag': tag, 'content': content}
         if filter_cond != self.filter_cond:
             self.refresh(filter_cond=filter_cond)
 
+    def default_action(self, **kwargs):
+        event = kwargs['event']
+        if isinstance(event, str) and event.endswith('Click'):
+            self.select_app(event=event)
+        elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
+            self.exit()
+        else:
+            self.run_app()
+
     def bind_hotkeys(self):
-        for tag, apps in self.apps_info.items():
+        for tag, apps in self.app_list.items():
             for app in apps:
                 key = app['key']
                 self.window[key].bind('<Button-1>', ' LeftClick')
@@ -547,18 +559,19 @@ class MyApp:
 
     def init_window(self):
         sg.theme(self.theme)
-        show_icon = E_SHOW_ICON if self.list_view else '!' + E_SHOW_ICON
-        show_list = E_SHOW_LIST if not self.list_view else '!' + E_SHOW_LIST
+        show_icon = E_SHOW_ICON if self.show_view == ViewType.LIST else '!' + E_SHOW_ICON
+        show_list = E_SHOW_LIST if self.show_view == ViewType.ICON else '!' + E_SHOW_LIST
+        show_local_app_list = E_SHOW_LOCAL_APPS if not self.show_local_app_list else E_HIDE_LOCAL_APPS
         menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
-                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW]],
+                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, show_local_app_list, E_SELECT_FONT, E_SET_WINDOW]],
                     [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
         layout = [[sg.Menu(menu_def, key='-MENU-BAR-')]]
         col_layout = [[sg.Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
                        sg.Button(E_SEARCH, key=E_SEARCH, bind_return_key=True)]]
         layout += [[sg.Column(col_layout, expand_x=True)]]
-        filter_tag = self.filter_cond['tab'] if self.filter_cond and len(self.filter_cond) > 0 else ''
+        filter_tag = self.filter_cond['tag'] if self.filter_cond and len(self.filter_cond) > 0 else ''
         filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
         layout += self.init_content(filter_tag, filter_content)
         col_layout = [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
@@ -587,10 +600,10 @@ class MyApp:
 
     def init_content(self, filter_tag, filter_content):
         tab_group = {}
-        max_num_per_row = 1 if self.list_view else max(math.floor(len(self.apps_info) / 2), 4)
+        max_num_per_row = 1 if self.show_view == ViewType.LIST else 4
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
-        for tag, apps in self.apps_info.items():
+        for tag, apps in self.app_list.items():
             tab_layout = []
             row_layout = []
             is_filter = True if tag == filter_tag else False
@@ -600,22 +613,23 @@ class MyApp:
                 apps = sorted(apps, key=lambda x: x['name'].upper(), reverse=True)
             for app in apps:
                 col_layout = []
+                # print(app)
                 app_name, app_icon, app_path, app_key = app['name'], app['icon'], app['path'], app['key']
-                if os.path.isfile(app_icon):
+                if app_icon and os.path.isfile(app_icon):
                     icon = sg.Image(source=app_icon, tooltip=app_name, key='[icon]' + app_key, enable_events=True,
-                                    background_color='white', right_click_menu=app_right_click_menu)
+                                    size=(32, 32), background_color='white', right_click_menu=app_right_click_menu)
                     col_layout.append(icon)
-                button = sg.Button(button_text=app_name[:20], tooltip=app_name, key=app_key, size=(20, 1),
-                                   button_color=('black', 'white'), enable_events=False, border_width=0,
+                button = sg.Button(button_text=app_name[:20], tooltip=app_name, key=app_key, metadata=app_path,
+                                   size=(20, 1), button_color=('black', 'white'), enable_events=False, border_width=0,
                                    right_click_menu=app_right_click_menu, expand_y=True)
                 col_layout.append(button)
-                if self.list_view:
+                if self.show_view == ViewType.LIST:
+                    time = sg.Text(app['time'], background_color='white', expand_x=True)
+                    col_layout.append(time)
                     path = sg.Text(text=app_path[:35], tooltip=app_path, size=(35, 1), justification='left',
                                    background_color='white', enable_events=True)
                     col_layout.append(path)
-                    time = sg.Text(app['time'], background_color='white')
-                    col_layout.append(time)
-                    col = sg.Column([col_layout], background_color='white', expand_y=True, expand_x=True,
+                    col = sg.Column([col_layout], background_color='white', expand_x=True, expand_y=True,
                                     right_click_menu=app_right_click_menu, grab=True)
                 else:
                     col = sg.Column([col_layout], background_color='white')
@@ -635,10 +649,10 @@ class MyApp:
         return [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
                              right_click_menu=tag_right_click_menu)]]
 
-    def init_apps_icon(self):
-        return glob.glob(os.path.join(self.icon_path, '*.png'))
+    def init_app_icon_list(self):
+        return glob.glob(os.path.join(self.app_icon_path, '*.png'))
 
-    def init_apps_info(self):
+    def init_app_list(self):
         apps_info = {ALL_APP: []}
         for parent, directorys, _files in os.walk(self.root):
             sub_root = parent.replace(self.root + os.path.sep, '')
@@ -649,14 +663,17 @@ class MyApp:
                     'name': directory,
                     'key': parent + '#' + os.path.join(parent, directory),
                     'path': os.path.join(parent, directory),
-                    'icon': random.choice(self.apps_icon),
+                    'icon': random.choice(self.app_icon_list),
                     'time': self.timestamp_to_datetime(os.path.getmtime(os.path.join(parent, directory))),
                 } for directory in directorys]
                 apps_info[parent] += apps
                 apps_info[ALL_APP] += apps
+        if self.show_local_app_list:
+            apps_info[LOCAL_APP] = self.init_local_installed_app_list()
         return apps_info
 
     def init_event_functions(self):
+        new_event_func = {'default': self.default_action}
         event_func = {
             sg.EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED: self.show_top,
             sg.WIN_CLOSE_ATTEMPTED_EVENT: self.attempt_exit,
@@ -672,6 +689,7 @@ class MyApp:
             E_SHOW_LIST: self.show_list,
             E_SELECT_ROOT: self.select_root,
             E_SELECT_THEME: self.select_theme,
+            E_SHOW_LOCAL_APPS: self.show_local_app_tag,
             E_SEARCH: self.search,
             E_REFRESH: self.refresh,
             E_MANAGE_TAG: self.manage_tag,
@@ -686,7 +704,6 @@ class MyApp:
             E_OPEN_APP_PATH: self.open_app_path,
             E_COPY_APP_PATH: self.copy_app_path,
         }
-        new_event_func = {}
         for key, value in event_func.items():
             new_event_func[key] = value
             if '&' in key:
@@ -710,7 +727,6 @@ class MyApp:
     def start(root, theme, enable_systray, enable_env, auto_update, **kwargs):
         app = MyApp(root, theme, enable_systray, enable_env, auto_update, **kwargs)
         app.run()
-        app.close()
 
     @staticmethod
     def init_event_hotkeys():
@@ -740,3 +756,72 @@ class MyApp:
         time_array = localtime(time_stamp)
         str_date = strftime(format_string, time_array)
         return str_date
+
+    @staticmethod
+    def make_png_from_app(icon_filepath, png_path):
+        filename = os.path.basename(icon_filepath).split('.')[0] + '.png'
+        png_filename = os.path.join(png_path, filename)
+        if os.path.exists(png_filename):
+            return png_filename
+        if icon_filepath.find(".exe") != -1:
+            large, _small = win32gui.ExtractIconEx(icon_filepath, 0)
+            hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
+            hbmp = win32ui.CreateBitmap()
+            hbmp.CreateCompatibleBitmap(hdc, 32, 32)
+            hdc = hdc.CreateCompatibleDC()
+            hdc.SelectObject(hbmp)
+            hdc.DrawIcon((0, 0), large[0])
+            bmp_bits = hbmp.GetBitmapBits(True)
+            img = Image.frombuffer('RGBA', (32, 32), bmp_bits, 'raw', 'BGRA', 0, 1)
+            img.save(png_filename)
+        elif icon_filepath.find('.ico') != -1:
+            img = Image.open(icon_filepath)
+            img = img.resize((32, 32), Image.LANCZOS)
+            img.save(png_filename)
+        else:
+            print(f'Could not support this file:{icon_filepath}')
+            png_filename = ''
+        return png_filename
+
+    def init_local_installed_app_list(self):
+        app_list = []
+        key_name_list = [r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                         r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall']
+        for key_name in key_name_list:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_name, 0, winreg.KEY_READ)
+            key_info = winreg.QueryInfoKey(key)[0]
+            for i in range(key_info):
+                app = {}
+                subkey_name = winreg.EnumKey(key, i)
+                subkey = winreg.OpenKey(key, subkey_name)
+                try:
+                    app['name'] = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                    app['path'] = winreg.QueryValueEx(subkey, "InstallLocation")[0]
+                    app['key'] = app['path']
+                    if not app['path']:
+                        continue
+                except EnvironmentError:
+                    continue
+                try:
+                    app['icon'] = winreg.QueryValueEx(subkey, "DisplayIcon")[0].split(',')[0].replace('"', '')
+                    if app['icon'].find('.exe') != -1:
+                        app['path'] = app['icon']
+                    app['icon'] = self.make_png_from_app(app['icon'], os.path.join(self.app_icon_path, 'local'))
+                    if not app['icon']:
+                        continue
+                except EnvironmentError:
+                    app['icon'] = ''
+                try:
+                    app['time'] = winreg.QueryValueEx(subkey, "InstallDate")[0]
+                except EnvironmentError:
+                    app['time'] = ''
+                try:
+                    app['version'] = winreg.QueryValueEx(subkey, "DisplayVersion")[0]
+                except EnvironmentError:
+                    app['version'] = ''
+                try:
+                    app['publisher'] = winreg.QueryValueEx(subkey, "Publisher")[0]
+                except EnvironmentError:
+                    app['publisher'] = ''
+                app_list.append(app)
+        return app_list
