@@ -7,11 +7,12 @@ import os
 import random
 import re
 import winreg
-
+import webbrowser
 import psgtray as pt
 import PySimpleGUI as sg
 import shutil
 import pyperclip
+import validators
 import win32con
 import win32gui
 import win32ui
@@ -24,6 +25,7 @@ from PIL import Image
 
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
+from appbookmark import AppBookmark
 
 E_FILE = '文件(&F)'
 E_IMPORT_APPS_INFO = '导入应用信息(&I)'
@@ -39,8 +41,10 @@ E_SHOW_LIST = '列表显示(&L)'
 E_OPTION = '选项(&S)'
 E_SELECT_ROOT = '选择根目录(&O)'
 E_SELECT_THEME = '选择主题(&T)'
-E_SHOW_LOCAL_APPS = '显示本地应用(&S)'
-E_HIDE_LOCAL_APPS = '隐藏本地应用(&H)'
+E_SHOW_LOCAL_APPS = '显示本地应用(&L)'
+E_HIDE_LOCAL_APPS = '隐藏本地应用(&L)'
+E_SHOW_BROWSER_BOOKMARKS = '显示浏览器书签(&B)'
+E_HIDE_BROWSER_BOOKMARKS = '隐藏浏览器书签(&B)'
 E_SELECT_FONT = '选择字体(&F)'
 E_SET_WINDOW = '设置窗口(&W)'
 E_HELP = '帮助(&H)'
@@ -55,6 +59,8 @@ E_RMV_APP = '删除应用(&D)'
 E_RUN_APP = '运行应用(&R)'
 E_OPEN_APP_PATH = '打开应用路径(&O)'
 E_COPY_APP_PATH = '复制应用路径(&C)'
+E_OPEN_CLASSIFICATION = '打开类别'
+E_ACTIVE_TAG = '活动标签'
 E_THREAD = '-THREAD-'
 E_DOWNLOAD_END = '-DOWNLOAD-END-'
 E_SYSTRAY_SHOW = '显示界面'
@@ -65,15 +71,28 @@ APP_TITLE_CHN = '工作助手'
 APP_TITLE_ENG = 'Work Helper'
 ALL_APP_CHN = '全部应用'
 ALL_APP_ENG = 'All App'
+CUSTOM_APP_CHN = '自定义应用'
+CUSTOM_APP_ENG = 'My App'
 LOCAL_APP_CHN = '本地应用'
 LOCAL_APP_ENG = 'Local App'
+FIREFOX_BOOKMARK_CHN = '火狐书签'
+FIREFOX_BOOKMARK_ENG = 'Firefox Bookmark'
+CHROME_BOOKMARK_CHN = '谷歌书签'
+CHROME_BOOKMARK_ENG = 'Chrome Bookmark'
 E_SEARCH_CHN = '搜索'
 E_SEARCH_ENG = 'Search'
+E_RETURN_CHN = '返回上一级'
+E_RETURN_ENG = 'Return'
 
 APP_TITLE = APP_TITLE_CHN
 ALL_APP = ALL_APP_CHN
+CUSTOM_APP = CUSTOM_APP_CHN
 LOCAL_APP = LOCAL_APP_CHN
+FIREFOX_BOOKMARK = FIREFOX_BOOKMARK_CHN
+CHROME_BOOKMARK = CHROME_BOOKMARK_CHN
+
 E_SEARCH = E_SEARCH_CHN
+E_RETURN = E_RETURN_CHN
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
 APP_VERSION = '1.0.0'
@@ -107,14 +126,18 @@ class MyApp:
         self.root = root if root and root != '' else os.path.join(os.getcwd(), APP_DEFAULT_ROOT)
         self.theme = theme if theme and theme != '' else APP_DEFAULT_THEME
         self.icon_path = os.path.join(os.getcwd(), 'images')
+        self.app_icon_path = os.path.join(os.getcwd(), 'images', '32x32')
         self.show_view = ViewType.ICON
-        self.show_local_app_list = True
-        self.filter_cond = None
+        self.show_local = True
+        self.show_browser = True
+        self.current_tag = ALL_APP
+        self.filter_tag = ALL_APP
+        self.filter_content = ''
         self.sort_type = None
         self.location = None
         self.app_list = None
-        self.app_icon_path = os.path.join(os.getcwd(), 'images', '32x32')
         self.app_icon_list = None
+        self.browsers = {}
         self.window = None
         self.systray = None
         self.updater = AppUpdater()
@@ -134,9 +157,14 @@ class MyApp:
         self.root = root if root and root != '' and root != self.root else self.root
         self.theme = theme if theme and theme != '' and theme != self.theme else self.theme
         self.show_view = kwargs['show_view'] if 'show_view' in kwargs else ViewType.ICON
-        self.filter_cond = kwargs['filter_cond'] if 'filter_cond' in kwargs else None
+        self.show_local = kwargs['show_local'] if 'show_local' in kwargs else True
+        self.show_browser = kwargs['show_browser'] if 'show_browser' in kwargs else True
+        self.current_tag = kwargs['current_tag'] if 'current_tag' in kwargs else ALL_APP
+        self.filter_tag = kwargs['filter_tag'] if 'filter_tag' in kwargs else ALL_APP
+        self.filter_content = kwargs['filter_content'] if 'filter_content' in kwargs else ''
         self.sort_type = kwargs['sort_type'] if 'sort_type' in kwargs else None
         self.location = kwargs['location'] if 'location' in kwargs else None
+        self.browsers = self.init_browsers()
         self.app_icon_list = self.init_app_icon_list()
         self.app_list = self.init_app_list()
         self.init_window()
@@ -276,7 +304,7 @@ class MyApp:
 
     def manage_tag(self, **_kwargs):
         values = [os.path.basename(tab) for tab, _ in self.app_list.items()]
-        cur_tab = os.path.basename(self.window['-TAB-GROUP-'].get())
+        cur_tab = os.path.basename(self.window[E_ACTIVE_TAG].get())
         col1 = sg.Column([[sg.Listbox(values, key='-TAB-LIST-', default_values=[cur_tab],
                                       select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, enable_events=True, size=(30, 40))]],
                          size=(200, 400))
@@ -371,7 +399,7 @@ class MyApp:
 
     def mod_tag(self, tab_key=None, **kwargs):
         if tab_key is None:
-            tab_key = kwargs['values']['-TAB-GROUP-']
+            tab_key = kwargs['values']['E_ACTIVE_TAG']
         result = False
         tab_name = os.path.basename(tab_key)
         tab_path = tab_key
@@ -396,7 +424,7 @@ class MyApp:
 
     def rmv_tag(self, tab_key=None, **kwargs):
         if tab_key is None:
-            tab_key = kwargs['values']['-TAB-GROUP-']
+            tab_key = kwargs['values'][E_ACTIVE_TAG]
         tab_name = os.path.basename(tab_key)
         tab_dir = tab_key
         result = sg.popup('是否删除' + tab_name + '?', keep_on_top=True, button_type=sg.POPUP_BUTTONS_YES_NO)
@@ -418,10 +446,11 @@ class MyApp:
         event = kwargs['event']
         key = event.replace('Click', '').replace('Right', '').replace('Left', '').strip()
         self.window[key].set_focus()
+        # self.window[key].update(background_color='gray')
 
     def add_app(self, tab_key=None, **kwargs):
         if tab_key is None:
-            tab_key = kwargs['values']['-TAB-GROUP-']
+            tab_key = kwargs['values'][E_ACTIVE_TAG]
         result = False
         tab_dir = tab_key
         layout = [[sg.Text('添加目标'), sg.Input(key='TargetPath'), sg.Button('浏览')],
@@ -503,20 +532,33 @@ class MyApp:
         if os.path.exists(cur_path):
             os.startfile(cur_path)
 
-    def run_app(self, **_kwargs):
-        item = self.window.find_element_with_focus()
-        if str(item).find('Button') > -1:
-            app_path = item.metadata
-            with contextlib.suppress(Exception):
+    def run_app(self, **kwargs):
+        event = kwargs['event']
+        key = event.replace(' DoubleLeftClick', '')
+        print('key', key)
+        element = self.window[key]
+        if not element:
+            element = self.window.find_element_with_focus()
+        with contextlib.suppress(Exception):
+            app = element.metadata
+            print(app)
+            if app['type'] == 'category':
+                self.refresh(current_tag=key)
+            else:
+                app_path = app['path']
                 if os.path.isfile(app_path):
-                    app = app_path
+                    os.startfile(app_path)
                 elif os.path.isdir(app_path):
-                    glob.glob('*.[lnk]')
                     for app_name in os.listdir(app_path):
                         if app_name.endswith((".lnk", ".exe")):
                             app = os.path.join(app_path, app_name)
+                            os.startfile(app)
                             break
-                os.startfile(app)
+                elif validators.url(app_path):
+                    print('url', app_path)
+                    webbrowser.open(app_path)
+                else:
+                    print('invalid path', app_path)
                 self.database.start_app(app_path)
 
     def copy_app_path(self, **_kwargs):
@@ -525,34 +567,65 @@ class MyApp:
         cur_path = app_key.split('#')[1]
         pyperclip.copy(cur_path)
 
-    @staticmethod
-    def show_local_app_tag():
-        print('show')
+    def show_local_app(self, **_kwargs):
+        self.refresh(show_local=True)
+
+    def hide_local_app(self, **_kwargs):
+        self.refresh(show_local=False)
+
+    def show_browser_bookmark(self, **_kwargs):
+        self.refresh(show_browser=True)
+
+    def hide_browser_bookmark(self, **_kwargs):
+        self.refresh(show_browser=False)
 
     def search(self, **kwargs):
         values = kwargs['values']
-        tag = values['-TAB-GROUP-']
-        content = values['-CONTENT-']
-        filter_cond = {'tag': tag, 'content': content}
-        if filter_cond != self.filter_cond:
-            self.refresh(filter_cond=filter_cond)
+        filter_tag = values[E_ACTIVE_TAG]
+        filter_content = values['-CONTENT-']
+        if filter_tag != self.filter_tag or filter_content != self.filter_content:
+            self.refresh(filter_tag=filter_tag, filter_content=filter_content)
+
+    def back(self, **_kwargs):
+        current_tag_list = self.current_tag.split('#')
+        current_tag = current_tag_list[0]
+        if current_tag != self.current_tag:
+            self.refresh(current_tag=current_tag)
+
+    def active_tag(self, **kwargs):
+        values = kwargs['values']
+        current_tag = values[E_ACTIVE_TAG]
+        print(self.current_tag)
+        if self.current_tag.find(current_tag) == -1:
+            self.current_tag = current_tag
+            self.window['-CURRENT-TAG-'].update(value=current_tag)
 
     def default_action(self, **kwargs):
         event = kwargs['event']
-        if isinstance(event, str) and event.endswith('Click'):
+        if isinstance(event, str) and (event.endswith(' LeftClick') or event.endswith(' RightClick')):
             self.select_app(event=event)
+        elif isinstance(event, str) and event.endswith(' DoubleLeftClick'):
+            self.run_app(**kwargs)
         elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
             self.exit()
-        else:
-            self.run_app()
 
     def bind_hotkeys(self):
+        current_tag_list = self.current_tag.split('#')
+        print('current_tag_list', current_tag_list)
         for tag, apps in self.app_list.items():
+            if len(current_tag_list) > 1 and tag == current_tag_list[0]:
+                for app in apps:
+                    if app['name'] == current_tag_list[1]:
+                        tag = self.current_tag
+                        apps = app['apps']
+                        break
             for app in apps:
-                key = app['key']
-                self.window[key].bind('<Button-1>', ' LeftClick')
-                self.window[key].bind('<Button-2>', ' MiddleClick')
-                self.window[key].bind('<Button-3>', ' RightClick')
+                key = tag + '#' + app['name']
+                if self.window[key]:
+                    self.window[key].bind('<Double-Button-1>', ' DoubleLeftClick')
+                    self.window[key].bind('<Button-1>', ' LeftClick')
+                    self.window[key].bind('<Button-2>', ' MiddleClick')
+                    self.window[key].bind('<Button-3>', ' RightClick')
         for event, hotkeys in self.event_hotkeys.items():
             for hotkey in hotkeys:
                 self.window.bind(hotkey, event)
@@ -561,19 +634,25 @@ class MyApp:
         sg.theme(self.theme)
         show_icon = E_SHOW_ICON if self.show_view == ViewType.LIST else '!' + E_SHOW_ICON
         show_list = E_SHOW_LIST if self.show_view == ViewType.ICON else '!' + E_SHOW_LIST
-        show_local_app_list = E_SHOW_LOCAL_APPS if not self.show_local_app_list else E_HIDE_LOCAL_APPS
+        show_local = E_SHOW_LOCAL_APPS if not self.show_local else E_HIDE_LOCAL_APPS
+        show_browser = E_SHOW_BROWSER_BOOKMARKS if not self.show_browser else E_HIDE_BROWSER_BOOKMARKS
         menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
-                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, show_local_app_list, E_SELECT_FONT, E_SET_WINDOW]],
+                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW, show_local, show_browser]],
                     [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
         layout = [[sg.Menu(menu_def, key='-MENU-BAR-')]]
-        col_layout = [[sg.Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
-                       sg.Button(E_SEARCH, key=E_SEARCH, bind_return_key=True)]]
+        disable_button = True if self.current_tag.find("#") == -1 else False
+        col_layout = [[sg.Button(image_filename='images/32x32/com/return.png', key=E_RETURN, disabled=disable_button,
+                                 tooltip=E_RETURN),
+                       sg.Input(default_text=self.current_tag, key='-CURRENT-TAG-', size=(15, 1), disabled=True,
+                                expand_x=True, expand_y=True),
+                       sg.Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
+                       sg.Button(image_filename='images/32x32/com/search.png', key=E_SEARCH, bind_return_key=True,
+                                 tooltip=E_SEARCH)
+                       ]]
         layout += [[sg.Column(col_layout, expand_x=True)]]
-        filter_tag = self.filter_cond['tag'] if self.filter_cond and len(self.filter_cond) > 0 else ''
-        filter_content = self.filter_cond['content'] if self.filter_cond and len(self.filter_cond) > 0 else ''
-        layout += self.init_content(filter_tag, filter_content)
+        layout += self.init_content()
         col_layout = [[sg.Text('欢迎使用' + self.name, key='-NOTIFICATION-'), sg.Sizegrip()]]
         layout += [[sg.Column(col_layout, expand_x=True)]]
         if self.location:
@@ -584,10 +663,10 @@ class MyApp:
                                     resizable=True, finalize=True, icon=self.icon, font='Courier 12')
         self.window.set_min_size((300, 500))
         self.location = self.window.current_location()
-        if filter_tag:
-            self.window[filter_tag].select()
-        if filter_content:
-            self.window['-CONTENT-'].update(filter_content)
+        print('filter_tag', self.filter_tag, 'filter_content', self.filter_content, 'current_tag', self.current_tag)
+        self.window[self.current_tag].select()
+        self.window['-CURRENT-TAG-'].update(value=self.current_tag)
+        self.window['-CONTENT-'].update(self.filter_content)
         self.bind_hotkeys()
         return self.window
 
@@ -598,30 +677,42 @@ class MyApp:
                                          single_click_events=False)
         return self.systray
 
-    def init_content(self, filter_tag, filter_content):
+    def init_content(self):
         tab_group = {}
         max_num_per_row = 1 if self.show_view == ViewType.LIST else 4
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
+
+        current_tag_list = self.current_tag.split('#')
+        print('current_tag_list', current_tag_list)
         for tag, apps in self.app_list.items():
+            if len(current_tag_list) > 1 and tag == current_tag_list[0]:
+                for app in apps:
+                    if app['name'] == current_tag_list[1]:
+                        tag = self.current_tag
+                        apps = app['apps']
+                        break
             tab_layout = []
             row_layout = []
-            is_filter = True if tag == filter_tag else False
             if self.sort_type == SortType.ASCEND:
                 apps = sorted(apps, key=lambda x: x['name'].upper())
             elif self.sort_type == SortType.DESCEND:
                 apps = sorted(apps, key=lambda x: x['name'].upper(), reverse=True)
             for app in apps:
                 col_layout = []
-                # print(app)
-                app_name, app_icon, app_path, app_key = app['name'], app['icon'], app['path'], app['key']
-                if app_icon and os.path.isfile(app_icon):
-                    icon = sg.Image(source=app_icon, tooltip=app_name, key='[icon]' + app_key, enable_events=True,
-                                    size=(32, 32), background_color='white', right_click_menu=app_right_click_menu)
-                    col_layout.append(icon)
-                button = sg.Button(button_text=app_name[:20], tooltip=app_name, key=app_key, metadata=app_path,
-                                   size=(20, 1), button_color=('black', 'white'), enable_events=False, border_width=0,
-                                   right_click_menu=app_right_click_menu, expand_y=True)
+                app_name, app_icon, app_path = app['name'], app['icon'], app['path']
+                app_key = tag + '#' + app_name
+                if not os.path.isfile(app_icon):
+                    if app_icon in ['category', 'bookmark']:
+                        app_icon = self.app_icon_list[0]
+                    elif app_icon in ['app', 'website']:
+                        app_icon = random.choice(self.app_icon_list[1:])
+                icon = sg.Image(source=app_icon, tooltip=app_name, key='[icon]' + app_key, enable_events=True,
+                                size=(32, 32), background_color='white', right_click_menu=app_right_click_menu)
+                col_layout.append(icon)
+                button = sg.Text(text=app_name[:20], tooltip=app_name, key=app_key, metadata=app,
+                                 size=(20, 1), background_color='white', enable_events=False, border_width=0,
+                                 right_click_menu=app_right_click_menu, expand_x=True)
                 col_layout.append(button)
                 if self.show_view == ViewType.LIST:
                     time = sg.Text(app['time'], background_color='white', expand_x=True)
@@ -633,7 +724,8 @@ class MyApp:
                                     right_click_menu=app_right_click_menu, grab=True)
                 else:
                     col = sg.Column([col_layout], background_color='white')
-                if (is_filter and re.search(filter_content, app_name, re.IGNORECASE)) or not is_filter:
+
+                if self.filter_content == '' or re.search(self.filter_content, app_name, re.IGNORECASE):
                     row_layout.append(col)
                 if len(row_layout) == max_num_per_row:
                     tab_layout.append(copy.deepcopy(row_layout))
@@ -646,30 +738,49 @@ class MyApp:
         tab_group_layout = [[sg.Tab(title=os.path.basename(tab_key), layout=tab_layout, key=tab_key,
                                     right_click_menu=tag_right_click_menu)
                              for tab_key, tab_layout in tab_group.items()]]
-        return [[sg.TabGroup(tab_group_layout, key='-TAB-GROUP-', expand_x=True, expand_y=True,
-                             right_click_menu=tag_right_click_menu)]]
+        return [[sg.TabGroup(tab_group_layout, key=E_ACTIVE_TAG, expand_x=True, expand_y=True,
+                             enable_events=True, right_click_menu=tag_right_click_menu)]]
+
+    def init_browsers(self):
+        app_list = self.get_local_installed_app_list()
+        browsers = {}
+        for app in app_list:
+            for name in ['firefox', 'chrome', 'edge', 'ie']:
+                if app['name'].lower().find(name) != -1:
+                    browsers[name] = AppBookmark(name)
+        return browsers
 
     def init_app_icon_list(self):
         return glob.glob(os.path.join(self.app_icon_path, '*.png'))
 
     def init_app_list(self):
         apps_info = {ALL_APP: []}
-        for parent, directorys, _files in os.walk(self.root):
-            sub_root = parent.replace(self.root + os.path.sep, '')
-            if parent != self.root and sub_root.find(os.path.sep) == -1:
-                if parent not in apps_info:
-                    apps_info[parent] = []
-                apps = [{
-                    'name': directory,
-                    'key': parent + '#' + os.path.join(parent, directory),
-                    'path': os.path.join(parent, directory),
-                    'icon': random.choice(self.app_icon_list),
-                    'time': self.timestamp_to_datetime(os.path.getmtime(os.path.join(parent, directory))),
-                } for directory in directorys]
-                apps_info[parent] += apps
-                apps_info[ALL_APP] += apps
-        if self.show_local_app_list:
-            apps_info[LOCAL_APP] = self.init_local_installed_app_list()
+        custom_apps = []
+        for category in os.listdir(self.root):
+            path = os.path.join(self.root, category)
+            apps = [{
+                'name': app,
+                'path': os.path.join(path, app),
+                'icon': 'app',
+                'type': 'app',
+                'time': self.timestamp_to_datetime(os.path.getmtime(os.path.join(path, app))),
+            } for app in os.listdir(path)]
+            apps_info[ALL_APP] += apps
+            custom_apps.append({
+                'name': category,
+                'path': path,
+                'icon': 'category',
+                'type': 'category',
+                'time': self.timestamp_to_datetime(os.path.getmtime(path)),
+                'apps': apps
+            })
+        apps_info[CUSTOM_APP] = custom_apps
+        if self.show_local:
+            apps_info[LOCAL_APP] = self.get_local_installed_app_list()
+            apps_info[ALL_APP] += apps_info[LOCAL_APP]
+        if self.show_browser:
+            apps_info[FIREFOX_BOOKMARK] = self.browsers['firefox'].get_bookmarks() if 'firefox' in self.browsers else []
+            apps_info[CHROME_BOOKMARK] = self.browsers['chrome'].get_bookmarks() if 'chrome' in self.browsers else []
         return apps_info
 
     def init_event_functions(self):
@@ -689,8 +800,13 @@ class MyApp:
             E_SHOW_LIST: self.show_list,
             E_SELECT_ROOT: self.select_root,
             E_SELECT_THEME: self.select_theme,
-            E_SHOW_LOCAL_APPS: self.show_local_app_tag,
+            E_SHOW_LOCAL_APPS: self.show_local_app,
+            E_HIDE_LOCAL_APPS: self.hide_local_app,
+            E_SHOW_BROWSER_BOOKMARKS: self.show_browser_bookmark,
+            E_HIDE_BROWSER_BOOKMARKS: self.hide_browser_bookmark,
             E_SEARCH: self.search,
+            E_RETURN: self.back,
+            E_ACTIVE_TAG: self.active_tag,
             E_REFRESH: self.refresh,
             E_MANAGE_TAG: self.manage_tag,
             E_ADD_TAG: self.add_tag,
@@ -783,7 +899,7 @@ class MyApp:
             png_filename = ''
         return png_filename
 
-    def init_local_installed_app_list(self):
+    def get_local_installed_app_list(self):
         app_list = []
         key_name_list = [r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
                          r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall']
