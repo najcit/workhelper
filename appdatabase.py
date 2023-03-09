@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
+
 import time
 import unqlite
 
+from appresource import APP_DB
+
 
 class AppDatabase:
-    def __init__(self, db_name):
+    def __init__(self, db_name=APP_DB):
         self.db_name = db_name
         self.db = unqlite.UnQLite(self.db_name)
         apps = self.db.collection('apps')

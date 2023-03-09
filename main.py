@@ -14,7 +14,7 @@ from app import MyApp
 @click.option('--enable_env', is_flag=True, default=True, help='enable environment variable for the application')
 @click.option('--auto_update', is_flag=True, default=False, help='enable auto update for the application')
 def main(root, theme, enable_systray, enable_env, auto_update):
-    MyApp.show(root, theme, enable_systray, enable_env, auto_update)
+    MyApp.show(root=root, theme=theme, enable_systray=enable_systray, enable_env=enable_env, auto_update=auto_update)
 
 
 if __name__ == '__main__':

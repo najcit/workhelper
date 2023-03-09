@@ -2,7 +2,7 @@
 pip freeze > requirements.txt
 echo refresh requirements info
 
-pyinstaller -w -F main.py -n workhelper --icon workhelper.ico
+pyinstaller -w -F main.py -n workhelper --icon images\window\workhelper.ico
 copy dist\workhelper.exe .
 del /S /Q workhelper.spec
 rd /S /Q dist

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import asyncio
 import os
 import shutil
@@ -8,6 +10,9 @@ import time
 class AppUpdater:
     def __init__(self, version=None):
         self.current_version = version
+
+    def close(self):
+        pass
 
     def is_new_version(self, version):
         return False
