@@ -54,7 +54,7 @@ class AppLocalApp(object):
             self.get_local_installed_app_list()
         browsers = set()
         for app in self.apps:
-            for name in ['firefox', 'chrome', 'edge', 'ie']:
+            for name in ['firefox', 'chrome', 'edge']:
                 if app['name'].lower().find(name) != -1:
                     browsers.add(name)
         return sorted(browsers)

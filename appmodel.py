@@ -5,8 +5,8 @@ import os
 
 from appbookmark import AppBookmark
 from applocalapp import AppLocalApp
+from apputil import get_path_time
 from appresource import *
-from apputil import timestamp_to_datetime
 
 
 class AppModel(object):
@@ -17,7 +17,7 @@ class AppModel(object):
         self.theme = APP_DEFAULT_THEME
         self.show_view = SHOW_ICON
         self.sort_order = SORT_DEFAULT
-        self.current_tag = ALL_APP
+        self.current_tag = ALL_APPS
         self.search_content = ''
         self.enable_systray = False
         self.enable_env = False
@@ -82,8 +82,8 @@ class AppModel(object):
         }
 
     def init_apps(self):
-        apps_info = {ALL_APP: []}
-        custom_apps = []
+        apps_info = {ALL_APPS: [], MY_APPS: [], LOCAL_APPS: [], ALL_BOOKMARKS: []}
+        my_apps = []
         for category in os.listdir(self.root):
             path = os.path.join(self.root, category)
             apps = [{
@@ -91,22 +91,22 @@ class AppModel(object):
                 'path': os.path.join(path, app),
                 'icon': 'app',
                 'type': 'app',
-                'time': timestamp_to_datetime(os.path.getmtime(os.path.join(path, app))),
+                'time': get_path_time(os.path.join(path, app)),
             } for app in os.listdir(path)]
-            apps_info[ALL_APP] += apps
-            custom_apps.append({
+            apps_info[ALL_APPS] += apps
+            my_apps.append({
                 'name': category,
                 'path': path,
                 'icon': 'category',
                 'type': 'category',
-                'time': timestamp_to_datetime(os.path.getmtime(path)),
+                'time': get_path_time(path),
                 'apps': apps
             })
-        apps_info[CUSTOM_APP] = custom_apps
+        apps_info[MY_APPS] = my_apps
         local_app = AppLocalApp()
         local_apps_info = local_app.get_local_installed_app_list()
-        apps_info[LOCAL_APP] = local_apps_info
-        apps_info[ALL_APP] += apps_info[LOCAL_APP]
+        apps_info[LOCAL_APPS] = local_apps_info
+        apps_info[ALL_APPS] += apps_info[LOCAL_APPS]
         browsers = local_app.get_local_installed_browsers()
         for browser in browsers:
             bookmark = AppBookmark(browser)

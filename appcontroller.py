@@ -70,15 +70,13 @@ class AppController(object):
     def search(self, **kwargs):
         values = kwargs['values']
         current_tag = values[E_ACTIVE_TAG]
-        filter_content = values['-CONTENT-']
-        if current_tag != self.model.current_tag or filter_content != self.model.filter_content:
-            self.refresh(current_tag=current_tag, filter_content=filter_content)
+        search_content = values['-CONTENT-']
+        self.window.search(current_tag=current_tag, search_content=search_content)
 
     def back(self, **_kwargs):
         current_tag_list = self.model.current_tag.split('#')
-        current_tag = current_tag_list[0]
-        if current_tag != self.model.current_tag:
-            self.refresh(current_tag=current_tag)
+        parent_tag = '#'.join(current_tag_list[:-1])
+        self.window.back(parent_tag)
 
     def activate_tag(self, **kwargs):
         values = kwargs['values']

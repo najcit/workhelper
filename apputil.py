@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import datetime
 import os
 from time import localtime, strftime
 
@@ -43,3 +44,10 @@ def find_or_make_icon(icon_filepath, png_path):
         png_filename = ''
     return png_filename
 
+
+def get_path_time(path):
+    return timestamp_to_datetime(os.path.getmtime(path))
+
+
+def formate_time(time):
+    return datetime.datetime.fromtimestamp(int(time) / 1000000).strftime('%Y-%m-%d %H:%M:%S')

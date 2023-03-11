@@ -115,24 +115,20 @@ class AppWindow(object):
         self.window.un_hide()
         self.window.bring_to_front()
 
-    def search(self, **kwargs):
-        values = kwargs['values']
-        current_tag = values[E_ACTIVE_TAG]
-        filter_content = values['-CONTENT-']
-        if current_tag != self.model.current_tag or filter_content != self.model.filter_content:
-            self.refresh(current_tag=current_tag, filter_content=filter_content)
+    def search(self, current_tag, search_content):
+        if current_tag != self.model.current_tag or search_content != self.model.search_content:
+            self.refresh(current_tag=current_tag, search_content=search_content)
 
-    def back(self, **_kwargs):
-        current_tag_list = self.model.current_tag.split('#')
-        current_tag = current_tag_list[0]
-        if current_tag != self.model.current_tag:
-            self.refresh(current_tag=current_tag)
+    def back(self, parent_tag):
+        self.refresh(current_tag=parent_tag)
 
     def activate_tag(self, current_tag):
         print(self.model.current_tag)
         if self.model.current_tag.find(current_tag) == -1:
             self.model.current_tag = current_tag
             self.window['-CURRENT-TAG-'].update(value=current_tag)
+        disabled = True if current_tag.find('#') == -1 else False
+        self.window[E_RETURN].update(disabled=disabled)
 
     def select_app(self, app_key):
         self.window[app_key].set_focus()
@@ -474,7 +470,7 @@ class AppWindow(object):
             element = self.window.find_element_with_focus()
         app = element.metadata
         print(app)
-        if app['type'] == 'category':
+        if app['type'] in ['category', 'folder']:
             self.refresh(current_tag=key)
         else:
             app_path = app['path']
@@ -497,19 +493,18 @@ class AppWindow(object):
         max_num_per_row = 1 if self.model.show_view == SHOW_LIST else 4
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
-
         current_tag_list = self.model.current_tag.split('#')
         print('current_tag_list', current_tag_list)
         for tag, apps in self.model.apps.items():
             print('tag', tag, 'show_browser', self.model.show_browser)
-            if not self.model.show_local and tag == LOCAL_APP:
+            if not self.model.show_local and tag == LOCAL_APPS:
                 continue
-            if not self.model.show_browser and tag in [FIREFOX_BOOKMARK, CHROME_BOOKMARK, IE_BOOKMARK, EDGE_BOOKMARK]:
+            if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS, EDGE_BOOKMARKS, CHROME_BOOKMARKS]:
                 continue
-            if len(current_tag_list) > 1 and tag == current_tag_list[0]:
+            for current_tag in current_tag_list:
                 for app in apps:
-                    if app['name'] == current_tag_list[1]:
-                        tag = self.model.current_tag
+                    if app['name'] == current_tag:
+                        tag += "#" + current_tag
                         apps = app['apps']
                         break
             tab_layout = []
@@ -523,10 +518,10 @@ class AppWindow(object):
                 app_name, app_type, app_icon, app_path = app['name'], app['type'], app['icon'], app['path']
                 app_key = tag + '#' + app_name
                 if not app_icon.endswith('.png'):
-                    if app_type in ['category', 'bookmark']:
-                        app_icon = self.model.icons[app_type]
-                    elif app_type in ['app', 'website']:
-                        app_icon = random.choice(self.model.icons[app_type])
+                    if app_type in ['category', 'bookmark', 'folder']:
+                        app_icon = self.model.icons['bookmark']
+                    elif app_type in ['app', 'website', 'url']:
+                        app_icon = random.choice(self.model.icons['app'])
                     elif app_type in ['local']:
                         app_icon = find_or_make_icon(app_icon, os.path.join(APP_ICON_PATH, app_type))
                     else:
@@ -569,23 +564,24 @@ class AppWindow(object):
         current_tag_list = self.model.current_tag.split('#')
         # print('current_tag_list', current_tag_list)
         for tag, apps in self.model.apps.items():
-            if not self.model.show_local and tag == LOCAL_APP:
+            if not self.model.show_local and tag == LOCAL_APPS:
                 continue
-            if not self.model.show_browser and tag in [FIREFOX_BOOKMARK, CHROME_BOOKMARK, IE_BOOKMARK, EDGE_BOOKMARK]:
+            if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS, CHROME_BOOKMARKS, EDGE_BOOKMARKS]:
                 continue
-            if len(current_tag_list) > 1 and tag == current_tag_list[0]:
+            for current_tag in current_tag_list:
                 for app in apps:
-                    if app['name'] == current_tag_list[1]:
-                        tag = self.model.current_tag
+                    if app['name'] == current_tag:
+                        tag += "#"+current_tag
                         apps = app['apps']
                         break
             for app in apps:
                 key = tag + '#' + app['name']
-                if self.window[key]:
-                    self.window[key].bind('<Double-Button-1>', ' DoubleClick')
-                    self.window[key].bind('<Button-1>', ' LeftClick')
-                    self.window[key].bind('<Button-2>', ' MiddleClick')
-                    self.window[key].bind('<Button-3>', ' RightClick')
+                if self.model.search_content == '' or re.search(self.model.search_content, app['name'], re.IGNORECASE):
+                    if self.window[key]:
+                        self.window[key].bind('<Double-Button-1>', ' DoubleClick')
+                        self.window[key].bind('<Button-1>', ' LeftClick')
+                        self.window[key].bind('<Button-2>', ' MiddleClick')
+                        self.window[key].bind('<Button-3>', ' RightClick')
         for event, hotkeys in self.model.event_hotkeys.items():
             for hotkey in hotkeys:
                 self.window.bind(hotkey, event)
