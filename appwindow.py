@@ -523,10 +523,10 @@ class AppWindow(object):
                 app_name, app_type, app_icon, app_path = app['name'], app['type'], app['icon'], app['path']
                 app_key = tag + '#' + app_name
                 if not app_icon.endswith('.png'):
-                    if app_type in ['category', 'bookmark']:
-                        app_icon = self.model.icons[app_type]
-                    elif app_type in ['app', 'website']:
-                        app_icon = random.choice(self.model.icons[app_type])
+                    if app_type in ['category', 'bookmark', 'folder']:
+                        app_icon = self.model.icons['bookmark']
+                    elif app_type in ['app', 'website', 'url']:
+                        app_icon = random.choice(self.model.icons['app'])
                     elif app_type in ['local']:
                         app_icon = find_or_make_icon(app_icon, os.path.join(APP_ICON_PATH, app_type))
                     else:

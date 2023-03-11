@@ -2,8 +2,10 @@
 
 import configparser
 import datetime
+import json
 import os
 import sqlite3
+from pprint import pprint
 
 from appresource import FIREFOX_BOOKMARK, CHROME_BOOKMARK, EDGE_BOOKMARK, IE_BOOKMARK, UNKNOWN_BOOKMARK
 
@@ -46,7 +48,7 @@ class AppBookmark:
         mozilla_bookmark = os.path.join(mozilla_data_path, r'places.sqlite')
         # print(mozilla_profile_ini, mozilla_data_path, mozilla_bookmark)
         # 读取 places.sqlite
-        menu_list = []
+        bookmarks = []
         if os.path.exists(mozilla_bookmark):
             firefox_connection = sqlite3.connect(mozilla_bookmark)
             cursor = firefox_connection.cursor()
@@ -59,8 +61,8 @@ class AppBookmark:
                         'icon': 'default',
                         'type': 'category',
                         'time': datetime.datetime.fromtimestamp(row[2] / 1000000).strftime('%Y-%m-%d %H:%M:%S')}
-                menu_list.append(menu)
-            for menu in menu_list:
+                bookmarks.append(menu)
+            for menu in bookmarks:
                 parent = menu['id']
                 query = f"""select moz_bookmarks.title, moz_places.url, moz_bookmarks.dateAdded
                             from moz_bookmarks,moz_places 
@@ -75,12 +77,39 @@ class AppBookmark:
                            'time': datetime.datetime.fromtimestamp(row[2]/1000000).strftime('%Y-%m-%d %H:%M:%S')}
                     apps.append(app)
                 menu['apps'] = apps
-        return menu_list
+        return bookmarks
 
     @staticmethod
     def get_chrome_bookmarks():
-        print('Getting chrome bookmark_name')
-        return []
+        bookmarks = []
+        bookmarks_file = os.path.join(os.getenv('APPDATA'), r'..\Local\Google\Chrome\User Data\Default\Bookmarks')
+        if os.path.isfile(bookmarks_file):
+            with open(bookmarks_file, encoding='utf-8') as file:
+                data = json.load(file)['roots']
+                for item in data:
+                    id_ = data[item]['id']
+                    time = int(data[item]['date_added'])
+                    children = data[item]['children']
+                    apps = []
+                    for child in children:
+                        pprint(child)
+                        type_ = child['type']
+                        time = int(child['date_added'])
+                        app = {'name': child['name'],
+                               'path': child['url'] if type_ == 'url' else '',
+                               'icon': 'default',
+                               'type': type_,
+                               'time': datetime.datetime.fromtimestamp(time/1000000).strftime('%Y-%m-%d %H:%M:%S')}
+                        apps.append(app)
+                    menu = {'id': id_,
+                            'name': item,
+                            'path': os.path.join(CHROME_BOOKMARK, item),
+                            'icon': 'default',
+                            'type': 'category',
+                            'time': datetime.datetime.fromtimestamp(time/1000000).strftime('%Y-%m-%d %H:%M:%S'),
+                            'apps': apps}
+                    bookmarks.append(menu)
+        return bookmarks
 
     @staticmethod
     def get_edge_bookmarks():
