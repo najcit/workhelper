@@ -6,14 +6,14 @@ import random
 import re
 import shutil
 import webbrowser
-
+import tkinter
 import pyperclip
 import validators
 import winshell
 import yaml
-from PySimpleGUI import TIMEOUT_KEY, theme, Menu, Sizegrip, Tab, TabGroup, Image, Listbox, theme_list
-from PySimpleGUI import WIN_CLOSED, \
-    popup_get_folder, Text, Button, Window, popup_no_buttons, popup_get_file, Column, \
+from PySimpleGUI import TIMEOUT_KEY, Menu, Sizegrip, Tab, TabGroup, Image, Listbox, theme_list, Combo, set_options
+from PySimpleGUI import theme as set_theme
+from PySimpleGUI import WIN_CLOSED, popup_get_folder, Text, Button, Window, popup_no_buttons, popup_get_file, Column, \
     LISTBOX_SELECT_MODE_SINGLE, Input, popup, POPUP_BUTTONS_YES_NO
 
 from psgtray import SystemTray
@@ -34,7 +34,8 @@ class AppWindow(object):
 
     def initialize(self, **kwargs):
         self.model.initialize(**kwargs)
-        theme(self.model.theme)
+        set_theme(self.model.theme)
+        set_options(font=self.model.font)
         show_icon = E_SHOW_ICON_VIEW if self.model.show_view == SHOW_LIST else '!' + E_SHOW_ICON_VIEW
         show_list = E_SHOW_LIST_VIEW if self.model.show_view == SHOW_ICON else '!' + E_SHOW_LIST_VIEW
         show_local = E_SHOW_LOCAL_APPS if not self.model.show_local else E_HIDE_LOCAL_APPS
@@ -61,10 +62,10 @@ class AppWindow(object):
         if self.model.location:
             self.window = Window(self.model.name, layout, location=self.model.location,
                                  enable_close_attempted_event=True,
-                                 resizable=True, finalize=True, icon=self.model.icons['window'], font='Courier 12')
+                                 resizable=True, finalize=True, icon=self.model.icons['window'])
         else:
             self.window = Window(self.model.name, layout, enable_close_attempted_event=True,
-                                 resizable=True, finalize=True, icon=self.model.icons['window'], font='Courier 12')
+                                 resizable=True, finalize=True, icon=self.model.icons['window'])
         self.window.set_min_size((300, 500))
         self.model.location = self.window.current_location()
         print('current_tag', self.model.current_tag, 'search_content', self.model.search_content,
@@ -192,30 +193,58 @@ class AppWindow(object):
             self.refresh(root=root)
 
     def select_theme(self):
-        cur_theme = self.model.theme
-        layout = [[Text('See how elements look under different themes by choosing a different theme here!')],
-                  [Listbox(values=theme_list(), default_values=[cur_theme], size=(20, 12), key='THEME_LISTBOX',
-                           enable_events=True)],
+        theme = self.model.theme
+        layout = [[Text('主题'), Combo(theme_list(), default_value=theme, key='-THEME-COMBO-')],
                   [Button('确定'), Button('取消')]]
-        window = Window('设置主题', layout)
+        window = Window('设置主题', layout, element_justification='right', keep_on_top=True)
         while True:
             event, values = window.read()
-            if event == WIN_CLOSED or event == '取消':
+            if event in [WIN_CLOSED, '取消']:
                 break
             elif event == '确定':
-                cur_theme = values['THEME_LISTBOX'][0]
+                theme = values['-THEME-COMBO-']
                 break
         window.close()
-        if cur_theme != self.model.theme:
-            set_env('MY_THEME', cur_theme)
-            self.refresh(theme=cur_theme)
-        return self
+        if theme != self.model.theme:
+            set_env('MY_THEME', theme)
+            self.refresh(theme=theme)
 
     def select_font(self):
-        print('Selecting font')
+        font_families = tkinter.font.families()
+        size_families = [i for i in range(1, 26)]
+        font = self.model.font
+        layout = [[Text('字体'), Combo(font_families, default_value=font[0], size=(20, 1), key='-STYLE-COMBO-')],
+                  [Text('大小'), Combo(size_families, default_value=font[1], size=(20, 1), key='-SIZE-COMBO-')],
+                  [Button('确定'), Button('取消')]]
+        window = Window('设置主题', layout, element_justification='right', keep_on_top=True)
+        while True:
+            event, values = window.read()
+            if event in [WIN_CLOSED, '取消']:
+                break
+            elif event == '确定':
+                font = (values['-STYLE-COMBO-'], values['-SIZE-COMBO-'])
+                break
+        window.close()
+        if font != self.model.font:
+            set_env('MY_FONT', font[0] + ' ' + str(font[1]))
+            self.refresh(font=font)
 
     def set_window(self):
-        print('Setting window')
+        cur_size = self.window.size
+        layout = [[Text('窗口宽度'), Input(cur_size[0], key='-WINDOWS-WIDTH-')],
+                  [Text('窗口高度'), Input(cur_size[1], key='-WINDOWS-HEIGHT-')],
+                  [Button('确定'), Button('取消')]]
+        window = Window('设置窗口', layout, element_justification='right', keep_on_top=True)
+        while window:
+            event, values = window.read()
+            if event in [WIN_CLOSED, '取消']:
+                break
+            elif event == '确定':
+                cur_size = (values['-WINDOWS-WIDTH-'], values['-WINDOWS-HEIGHT-'])
+                break
+        window.close()
+        if cur_size != self.window.size:
+            self.window.size = cur_size
 
     def show_local_app(self):
         self.refresh(show_local=True)
@@ -571,7 +600,7 @@ class AppWindow(object):
             for current_tag in current_tag_list:
                 for app in apps:
                     if app['name'] == current_tag:
-                        tag += "#"+current_tag
+                        tag += "#" + current_tag
                         apps = app['apps']
                         break
             for app in apps:

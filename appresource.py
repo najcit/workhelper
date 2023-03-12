@@ -68,9 +68,11 @@ UNKNOWN_BOOKMARKS_ENG = 'Unknown Bookmarks'
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
 APP_VERSION = '1.0.0'
-APP_DEFAULT_ROOT = 'root'
-APP_DEFAULT_THEME = 'DarkGreen'
+APP_ROOT = 'root'
+APP_THEME = 'DarkGreen'
+APP_FONT = ('Helvetica', 12)
 APP_ICON_PATH = 'images'
+FONT_FAMILY = ['Helvetica', 'Courier', ]
 
 APP_TITLE = APP_TITLE_CHN
 ALL_APPS = ALL_APPS_CHN

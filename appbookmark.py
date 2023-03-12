@@ -9,7 +9,7 @@ from appresource import FIREFOX_BOOKMARKS, CHROME_BOOKMARKS, EDGE_BOOKMARKS, UNK
 from apputil import formate_time
 
 
-class AppBookmark:
+class AppBookmark(object):
 
     def __init__(self, name):
         self.browser_name = name

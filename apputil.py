@@ -10,7 +10,8 @@ from PIL import Image
 
 def set_env(key, value):
     if os.getenv(key) != value:
-        command = f'start /b setx {key} {value}'.format(key=key, value=value)
+        command = f'start /b setx {key} "{value}"'.format(key=key, value=value)
+        print(command)
         os.popen(command)
 
 

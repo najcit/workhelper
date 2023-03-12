@@ -6,7 +6,7 @@ class AppLocalApp(object):
     def __init__(self):
         self.apps = []
 
-    def get_local_installed_app_list(self):
+    def get_installed_apps(self):
         self.apps = []
         key_name_list = [r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
                          r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall']
@@ -49,9 +49,9 @@ class AppLocalApp(object):
                 self.apps.append(app)
         return self.apps
 
-    def get_local_installed_browsers(self):
+    def get_installed_browsers(self):
         if not self.apps:
-            self.get_local_installed_app_list()
+            self.get_installed_apps()
         browsers = set()
         for app in self.apps:
             for name in ['firefox', 'chrome', 'edge']:

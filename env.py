@@ -3,6 +3,7 @@ import ctypes
 
 
 class Registry(object):
+
     def __init__(self, key_location, key_path):
         self.reg_key = winreg.OpenKey(key_location, key_path, 0, winreg.KEY_ALL_ACCESS)
 
@@ -42,15 +43,15 @@ class EnvironmentVariables(Registry):
 
     @staticmethod
     def refresh(self):
-        HWND_BROADCAST = 0xFFFF
-        WM_SETTINGCHANGE = 0x1A
-        SMTO_ABORTIFHUNG = 0x0002
+        hwnd_broadcast = 0xFFFF
+        wm_settingchange = 0x1A
+        smto_abortifhung = 0x0002
         result = ctypes.c_long()
-        ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, u'Environment',
-                                                 SMTO_ABORTIFHUNG, 5000, ctypes.byref(result))
+        ctypes.windll.user32.SendMessageTimeoutW(hwnd_broadcast, wm_settingchange, 0, u'Environment',
+                                                 smto_abortifhung, 5000, ctypes.byref(result))
 
 
 if __name__ == '__main__':
     ev = EnvironmentVariables()
-    ev.set_key('My', 'Test')
+    ev.on('My', 'Test')
     ev.off('My')
