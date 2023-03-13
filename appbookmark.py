@@ -11,8 +11,7 @@ from apputil import formate_time
 
 class AppBookmark(object):
 
-    def __init__(self, name):
-        self.browser_name = name
+    def __init__(self):
         self.bookmark_name = {
             'firefox': FIREFOX_BOOKMARKS,
             'chrome': CHROME_BOOKMARKS,
@@ -24,14 +23,14 @@ class AppBookmark(object):
             'edge': self.get_edge_bookmarks,
         }
 
-    def get_bookmark_name(self):
-        if self.browser_name in self.bookmark_name:
-            return self.bookmark_name[self.browser_name]
+    def name(self, browser_name):
+        if browser_name in self.bookmark_name:
+            return self.bookmark_name[browser_name]
         return UNKNOWN_BOOKMARKS
 
-    def get_bookmarks(self):
-        if self.browser_name in self.bookmarks:
-            return self.bookmarks[self.browser_name]()
+    def get_bookmarks(self, browser_name):
+        if browser_name in self.bookmarks:
+            return self.bookmarks[browser_name]()
         return []
 
     @staticmethod
@@ -75,34 +74,16 @@ class AppBookmark(object):
         return bookmarks
 
     @staticmethod
-    def get_children(root):
+    def get_sub_bookmarks(root):
         bookmarks = []
-        if isinstance(root, dict):
-            for key, value in root.items():
-                id_ = value['id']
-                name = value['name']
-                type_ = value['type']
-                path = value['url'] if type_ == 'url' else ''
-                time = formate_time(value['date_added'])
-                apps = AppBookmark.get_children(value['children']) if type_ == 'folder' else []
-                if type_ == 'folder' and apps == []:
-                    continue
-                bookmark = {'id': id_,
-                            'name': name,
-                            'path': path,
-                            'icon': 'default',
-                            'type': type_,
-                            'time': time,
-                            'apps': apps}
-                bookmarks.append(bookmark)
-        elif isinstance(root, list):
+        if isinstance(root, list):
             for item in root:
                 id_ = item['id']
                 name = item['name']
                 type_ = item['type']
                 path = item['url'] if type_ == 'url' else ''
                 time = formate_time(item['date_added'])
-                apps = AppBookmark.get_children(item['children']) if type_ == 'folder' else []
+                apps = AppBookmark.get_sub_bookmarks(item['children']) if type_ == 'folder' else []
                 if type_ == 'folder' and apps == []:
                     continue
                 bookmark = {'id': id_,
@@ -122,7 +103,7 @@ class AppBookmark(object):
         if os.path.isfile(bookmarks_file):
             with open(bookmarks_file, encoding='utf-8') as file:
                 root = json.load(file)['roots']
-                bookmarks = AppBookmark.get_children(root['bookmark_bar']['children'])
+                bookmarks = AppBookmark.get_sub_bookmarks(root['bookmark_bar']['children'])
         return bookmarks
 
     @staticmethod
@@ -132,5 +113,5 @@ class AppBookmark(object):
         if os.path.isfile(bookmarks_file):
             with open(bookmarks_file, encoding='utf-8') as file:
                 root = json.load(file)['roots']
-                bookmarks = AppBookmark.get_children(root['bookmark_bar']['children'])
+                bookmarks = AppBookmark.get_sub_bookmarks(root['bookmark_bar']['children'])
         return bookmarks

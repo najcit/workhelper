@@ -5,7 +5,7 @@ import os
 
 from appbookmark import AppBookmark
 from applocalapp import AppLocalApp
-from apputil import get_path_time
+from appmyapp import AppMyApp
 from appresource import *
 
 
@@ -78,44 +78,31 @@ class AppModel(object):
     def init_icons():
         return {
             'window': os.path.join(APP_ICON_PATH, 'window', APP_ICON),
-            'app': glob.glob(os.path.join(APP_ICON_PATH, 'app', '*.png')),
-            'return': os.path.join(APP_ICON_PATH, 'return', 'return.png'),
-            'search': os.path.join(APP_ICON_PATH, 'search', 'search.png'),
-            'bookmark': os.path.join(APP_ICON_PATH, 'bookmark', 'bookmark.png'),
-            'category': os.path.join(APP_ICON_PATH, 'category', 'category.png'),
+            'default': glob.glob(os.path.join(APP_ICON_PATH, 'default', '*.png')),
+            'return': os.path.join(APP_ICON_PATH, 'button', 'return.png'),
+            'search': os.path.join(APP_ICON_PATH, 'button', 'search.png'),
+            'bookmark': os.path.join(APP_ICON_PATH, 'folder', 'bookmark.png'),
+            'category': os.path.join(APP_ICON_PATH, 'folder', 'category.png'),
         }
 
     def init_apps(self):
         apps_info = {ALL_APPS: [], MY_APPS: [], LOCAL_APPS: [], ALL_BOOKMARKS: []}
-        my_apps = []
-        print(self.root)
-        for category in os.listdir(self.root):
-            path = os.path.join(self.root, category)
-            apps = [{
-                'name': app,
-                'path': os.path.join(path, app),
-                'icon': 'app',
-                'type': 'app',
-                'time': get_path_time(os.path.join(path, app)),
-            } for app in os.listdir(path)]
-            apps_info[ALL_APPS] += apps
-            my_apps.append({
-                'name': category,
-                'path': path,
-                'icon': 'category',
-                'type': 'category',
-                'time': get_path_time(path),
-                'apps': apps
-            })
-        apps_info[MY_APPS] = my_apps
+
+        my_app = AppMyApp()
+        apps_info[MY_APPS] = my_app.get_my_apps(self.root)
+        apps_info[ALL_APPS] += apps_info[MY_APPS]
+
         local_app = AppLocalApp()
         local_apps_info = local_app.get_installed_apps()
         apps_info[LOCAL_APPS] = local_apps_info
         apps_info[ALL_APPS] += apps_info[LOCAL_APPS]
+
         browsers = local_app.get_installed_browsers()
+        bookmark = AppBookmark()
         for browser in browsers:
-            bookmark = AppBookmark(browser)
-            apps_info[bookmark.get_bookmark_name()] = bookmark.get_bookmarks()
+            apps_info[bookmark.name(browser)] = bookmark.get_bookmarks(browser)
+            apps_info[ALL_BOOKMARKS] += apps_info[bookmark.name(browser)]
+
         return apps_info
 
     @staticmethod

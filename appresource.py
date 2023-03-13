@@ -70,8 +70,8 @@ APP_DB = 'workhelper.db'
 APP_VERSION = '1.0.0'
 APP_ROOT = 'root'
 APP_THEME = 'DarkGreen'
-APP_FONT = ('Helvetica', 12)
-APP_ICON_PATH = 'images'
+APP_FONT = ('Helvetica', 11)
+APP_ICON_PATH = 'image'
 FONT_FAMILY = ['Helvetica', 'Courier', ]
 
 APP_TITLE = APP_TITLE_CHN

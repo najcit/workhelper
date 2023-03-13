@@ -6,4 +6,4 @@ venv/
 *.zip
 *.spec
 *.db
-images/local/
+image/local/

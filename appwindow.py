@@ -5,17 +5,17 @@ import os
 import random
 import re
 import shutil
+import time
 import webbrowser
 import tkinter
 import pyperclip
 import validators
 import winshell
 import yaml
-from PySimpleGUI import TIMEOUT_KEY, Menu, Sizegrip, Tab, TabGroup, Image, Listbox, theme_list, Combo, set_options
 from PySimpleGUI import theme as set_theme
-from PySimpleGUI import WIN_CLOSED, popup_get_folder, Text, Button, Window, popup_no_buttons, popup_get_file, Column, \
-    LISTBOX_SELECT_MODE_SINGLE, Input, popup, POPUP_BUTTONS_YES_NO
-
+from PySimpleGUI import TIMEOUT_KEY, WIN_CLOSED, LISTBOX_SELECT_MODE_SINGLE, POPUP_BUTTONS_YES_NO
+from PySimpleGUI import popup_get_folder, set_options, popup_no_buttons, popup_get_file, theme_list, popup
+from PySimpleGUI import Menu, Sizegrip, Tab, TabGroup, Image, Listbox, Combo, Text, Button, Window, Column, Input
 from psgtray import SystemTray
 from appresource import *
 from apputil import find_or_make_icon, set_env
@@ -66,7 +66,7 @@ class AppWindow(object):
         else:
             self.window = Window(self.model.name, layout, enable_close_attempted_event=True,
                                  resizable=True, finalize=True, icon=self.model.icons['window'])
-        self.window.set_min_size((300, 500))
+        self.window.set_min_size((800, 400))
         self.model.location = self.window.current_location()
         print('current_tag', self.model.current_tag, 'search_content', self.model.search_content,
               'current_tag', self.model.current_tag)
@@ -366,7 +366,7 @@ class AppWindow(object):
                 if not os.path.exists(tab_path):
                     os.mkdir(tab_path)
                 result = tab_name
-                popup('成功添加' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
+                popup_no_buttons('成功添加' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
         window.close()
         if result:
@@ -389,7 +389,7 @@ class AppWindow(object):
                 if os.path.exists(tab_path):
                     os.renames(tab_path, os.path.join(self.model.root, tab_name))
                 result = tab_name
-                popup('成功修改为' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
+                popup_no_buttons('成功修改为' + tab_name, auto_close=True, auto_close_duration=3, keep_on_top=True)
                 break
         window.close()
         if result:
@@ -517,25 +517,33 @@ class AppWindow(object):
             else:
                 print('invalid path', app_path)
 
+    def _get_apps_of_current_tag(self, tag, apps):
+        current_tag_list = self.model.current_tag.split('#')
+        if len(current_tag_list) == 1:
+            return tag, apps
+        else:
+            if tag == current_tag_list[0]:
+                for i in range(len(current_tag_list[1:])):
+                    for app in apps:
+                        if app['name'] == current_tag_list[i]:
+                            tag += "#" + current_tag_list[i]
+                            apps = app['apps']
+                            break
+        return tag, apps
+
     def _init_content(self):
+        print(time.perf_counter())
         tab_group = {}
         max_num_per_row = 1 if self.model.show_view == SHOW_LIST else 4
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
-        current_tag_list = self.model.current_tag.split('#')
-        print('current_tag_list', current_tag_list)
         for tag, apps in self.model.apps.items():
-            print('tag', tag, 'show_browser', self.model.show_browser)
+            # print('tag', tag, 'show_browser', self.model.show_browser)
             if not self.model.show_local and tag == LOCAL_APPS:
                 continue
-            if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS, EDGE_BOOKMARKS, CHROME_BOOKMARKS]:
+            if not self.model.show_browser and tag in [CHROME_BOOKMARKS, EDGE_BOOKMARKS, FIREFOX_BOOKMARKS]:
                 continue
-            for current_tag in current_tag_list:
-                for app in apps:
-                    if app['name'] == current_tag:
-                        tag += "#" + current_tag
-                        apps = app['apps']
-                        break
+            tag, apps = self._get_apps_of_current_tag(tag, apps)
             tab_layout = []
             row_layout = []
             if self.model.sort_order == SORT_ASCEND:
@@ -550,7 +558,7 @@ class AppWindow(object):
                     if app_type in ['category', 'bookmark', 'folder']:
                         app_icon = self.model.icons['bookmark']
                     elif app_type in ['app', 'website', 'url']:
-                        app_icon = random.choice(self.model.icons['app'])
+                        app_icon = random.choice(self.model.icons['default'])
                     elif app_type in ['local']:
                         app_icon = find_or_make_icon(app_icon, os.path.join(APP_ICON_PATH, app_type))
                     else:
@@ -558,20 +566,20 @@ class AppWindow(object):
                 icon = Image(source=app_icon, tooltip=app_name, key='[icon]' + app_key, enable_events=True,
                              size=(32, 32), background_color='white', right_click_menu=app_right_click_menu)
                 col_layout.append(icon)
-                button = Text(text=app_name[:20], tooltip=app_name, key=app_key, metadata=app,
-                              size=(20, 1), background_color='white', enable_events=False, border_width=0,
+                button = Text(text=app_name, tooltip=app_name, key=app_key, metadata=app,
+                              size=(30, 1), background_color='white', enable_events=False, border_width=0,
                               right_click_menu=app_right_click_menu, expand_x=True)
                 col_layout.append(button)
                 if self.model.show_view == SHOW_LIST:
-                    time = Text(app['time'], background_color='white', expand_x=True)
-                    col_layout.append(time)
-                    path = Text(text=app_path[:35], tooltip=app_path, size=(35, 1), justification='left',
+                    date_time = Text(app['time'], background_color='white', size=(20, 1), expand_x=True)
+                    col_layout.append(date_time)
+                    path = Text(text=app_path, tooltip=app_path, size=(200, 1), justification='left',
                                 background_color='white', enable_events=True)
                     col_layout.append(path)
                     col = Column([col_layout], background_color='white', expand_x=True, expand_y=True,
-                                 right_click_menu=app_right_click_menu, grab=True)
+                                 right_click_menu=app_right_click_menu)
                 else:
-                    col = Column([col_layout], background_color='white')
+                    col = Column([col_layout], background_color='white', right_click_menu=app_right_click_menu)
 
                 if self.model.search_content == '' or re.search(self.model.search_content, app_name, re.IGNORECASE):
                     row_layout.append(col)
@@ -586,23 +594,17 @@ class AppWindow(object):
         tab_group_layout = [[Tab(title=os.path.basename(tab_key), layout=tab_layout, key=tab_key,
                                  right_click_menu=tag_right_click_menu)
                              for tab_key, tab_layout in tab_group.items()]]
+        print(time.perf_counter())
         return [[TabGroup(tab_group_layout, key=E_ACTIVE_TAG, expand_x=True, expand_y=True,
                           enable_events=True, right_click_menu=tag_right_click_menu)]]
 
     def _bind_hotkeys(self):
-        current_tag_list = self.model.current_tag.split('#')
-        # print('current_tag_list', current_tag_list)
         for tag, apps in self.model.apps.items():
             if not self.model.show_local and tag == LOCAL_APPS:
                 continue
             if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS, CHROME_BOOKMARKS, EDGE_BOOKMARKS]:
                 continue
-            for current_tag in current_tag_list:
-                for app in apps:
-                    if app['name'] == current_tag:
-                        tag += "#" + current_tag
-                        apps = app['apps']
-                        break
+            tag, apps = self._get_apps_of_current_tag(tag, apps)
             for app in apps:
                 key = tag + '#' + app['name']
                 if self.model.search_content == '' or re.search(self.model.search_content, app['name'], re.IGNORECASE):

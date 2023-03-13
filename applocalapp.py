@@ -1,5 +1,7 @@
 import winreg
 
+from appresource import LOCAL_APPS
+
 
 class AppLocalApp(object):
 
@@ -20,7 +22,6 @@ class AppLocalApp(object):
                 try:
                     app['name'] = winreg.QueryValueEx(subkey, "DisplayName")[0]
                     app['path'] = winreg.QueryValueEx(subkey, "InstallLocation")[0]
-                    app['key'] = app['path']
                     app['type'] = 'local'
                     if not app['path']:
                         continue
