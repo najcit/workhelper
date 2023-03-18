@@ -33,6 +33,7 @@ class AppWindow(object):
         self.close()
 
     def initialize(self, **kwargs):
+        print(time.perf_counter())
         self.model.initialize(**kwargs)
         set_theme(self.model.theme)
         set_options(font=self.model.font)
@@ -51,7 +52,8 @@ class AppWindow(object):
                               tooltip=E_RETURN),
                        Input(default_text=self.model.current_tag, key='-CURRENT-TAG-', size=(15, 1), disabled=True,
                              expand_x=True, expand_y=True),
-                       Input(enable_events=False, key='-CONTENT-', expand_x=True, expand_y=True),
+                       Input(default_text=self.model.search_content, key='-CONTENT-', expand_x=True, expand_y=True,
+                             enable_events=False),
                        Button(image_filename=self.model.icons['search'], key=E_SEARCH, bind_return_key=True,
                               tooltip=E_SEARCH)
                        ]]
@@ -67,18 +69,14 @@ class AppWindow(object):
             self.window = Window(self.model.name, layout, enable_close_attempted_event=True,
                                  resizable=True, finalize=True, icon=self.model.icons['window'])
         self.window.set_min_size((800, 400))
-        self.model.location = self.window.current_location()
-        print('current_tag', self.model.current_tag, 'search_content', self.model.search_content,
-              'current_tag', self.model.current_tag)
         self.window[self.model.current_tag].select()
-        self.window['-CURRENT-TAG-'].update(value=self.model.current_tag)
-        self.window['-CONTENT-'].update(self.model.search_content)
         self._bind_hotkeys()
 
         menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
         if self.model.enable_systray and self.window:
             self.systray = SystemTray(menu, icon=self.model.icon, window=self.window, tooltip=self.model.name,
                                       single_click_events=False)
+        print(time.perf_counter())
 
     def close(self):
         if self.window:
@@ -498,7 +496,6 @@ class AppWindow(object):
         if not element:
             element = self.window.find_element_with_focus()
         app = element.metadata
-        print(app)
         if app['type'] in ['category', 'folder']:
             self.refresh(current_tag=key)
         else:
@@ -517,19 +514,35 @@ class AppWindow(object):
             else:
                 print('invalid path', app_path)
 
+    def get_filter_apps(self, apps):
+        filter_apps = []
+        for app in apps:
+            app_name, app_type = app['name'], app['type']
+            if app_type in ['app', 'local', 'url']:
+                if re.search(self.model.search_content, app_name, re.IGNORECASE):
+                    filter_apps.append(app)
+            else:
+                app_apps = app['apps']
+                filter_apps += self.get_filter_apps(app_apps)
+        return filter_apps
+
     def _get_apps_of_current_tag(self, tag, apps):
         current_tag_list = self.model.current_tag.split('#')
-        if len(current_tag_list) == 1:
-            return tag, apps
+        if len(current_tag_list) != 1 and tag == current_tag_list[0]:
+            for i in range(1, len(current_tag_list)):
+                for app in apps:
+                    app_name = app['name']
+                    print(tag, app_name, current_tag_list[i])
+                    if app_name == current_tag_list[i]:
+                        tag += "#" + current_tag_list[i]
+                        apps = app['apps']
+                        break
+        filter_apps = []
+        if self.model.search_content == '':
+            filter_apps = apps
         else:
-            if tag == current_tag_list[0]:
-                for i in range(len(current_tag_list[1:])):
-                    for app in apps:
-                        if app['name'] == current_tag_list[i]:
-                            tag += "#" + current_tag_list[i]
-                            apps = app['apps']
-                            break
-        return tag, apps
+            filter_apps += self.get_filter_apps(apps)
+        return tag, filter_apps
 
     def _init_content(self):
         print(time.perf_counter())
@@ -538,7 +551,6 @@ class AppWindow(object):
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
         for tag, apps in self.model.apps.items():
-            # print('tag', tag, 'show_browser', self.model.show_browser)
             if not self.model.show_local and tag == LOCAL_APPS:
                 continue
             if not self.model.show_browser and tag in [CHROME_BOOKMARKS, EDGE_BOOKMARKS, FIREFOX_BOOKMARKS]:
@@ -557,7 +569,7 @@ class AppWindow(object):
                 if not app_icon.endswith('.png'):
                     if app_type in ['category', 'bookmark', 'folder']:
                         app_icon = self.model.icons['bookmark']
-                    elif app_type in ['app', 'website', 'url']:
+                    elif app_type in ['app', 'url']:
                         app_icon = random.choice(self.model.icons['default'])
                     elif app_type in ['local']:
                         app_icon = find_or_make_icon(app_icon, os.path.join(APP_ICON_PATH, app_type))
@@ -580,9 +592,7 @@ class AppWindow(object):
                                  right_click_menu=app_right_click_menu)
                 else:
                     col = Column([col_layout], background_color='white', right_click_menu=app_right_click_menu)
-
-                if self.model.search_content == '' or re.search(self.model.search_content, app_name, re.IGNORECASE):
-                    row_layout.append(col)
+                row_layout.append(col)
                 if len(row_layout) == max_num_per_row:
                     tab_layout.append(copy.deepcopy(row_layout))
                     row_layout.clear()
@@ -607,12 +617,11 @@ class AppWindow(object):
             tag, apps = self._get_apps_of_current_tag(tag, apps)
             for app in apps:
                 key = tag + '#' + app['name']
-                if self.model.search_content == '' or re.search(self.model.search_content, app['name'], re.IGNORECASE):
-                    if self.window[key]:
-                        self.window[key].bind('<Double-Button-1>', ' DoubleClick')
-                        self.window[key].bind('<Button-1>', ' LeftClick')
-                        self.window[key].bind('<Button-2>', ' MiddleClick')
-                        self.window[key].bind('<Button-3>', ' RightClick')
+                if self.window[key]:
+                    self.window[key].bind('<Double-Button-1>', ' DoubleClick')
+                    self.window[key].bind('<Button-1>', ' LeftClick')
+                    self.window[key].bind('<Button-2>', ' MiddleClick')
+                    self.window[key].bind('<Button-3>', ' RightClick')
         for event, hotkeys in self.model.event_hotkeys.items():
             for hotkey in hotkeys:
                 self.window.bind(hotkey, event)
