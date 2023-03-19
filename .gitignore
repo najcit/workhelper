@@ -1,6 +1,7 @@
 .idea/
 demo/
 root/
+test/
 venv/
 *.exe
 *.zip
