@@ -12,7 +12,7 @@ import pyperclip
 import validators
 import winshell
 import yaml
-from PySimpleGUI import theme as set_theme
+from PySimpleGUI import theme as set_theme, Yes, No, T
 from PySimpleGUI import TIMEOUT_KEY, WIN_CLOSED, LISTBOX_SELECT_MODE_SINGLE, POPUP_BUTTONS_YES_NO
 from PySimpleGUI import popup_get_folder, set_options, popup_no_buttons, popup_get_file, theme_list, popup
 from PySimpleGUI import Menu, Sizegrip, Tab, TabGroup, Image, Listbox, Combo, Text, Button, Window, Column, Input
@@ -256,21 +256,33 @@ class AppWindow(object):
     def hide_browser_bookmark(self):
         self.refresh(show_browser=False)
 
-    def check_update(self, is_new_version, installer):
-        if is_new_version:
-            text = '当前软件已是最新版本，版本号: {version}'.format(version=self.model.version)
-            popup_no_buttons(text, title=self.model.name, auto_close=True, auto_close_duration=10)
+    def check_update(self, newest_version, installer):
+        if newest_version == self.model.version:
+            text, title = f'当前已是最新版本: {self.model.version}', self.model.name
+            popup_no_buttons(text, title=title, keep_on_top=True, auto_close=True, auto_close_duration=5)
         else:
-            async def update_progress(percentage):
-                progressbar = self.window['-NOTIFICATION-']
-                value = '最新版软件正在下载，进度为 {percentage}%。'.format(percentage=percentage)
-                progressbar.update(value=value)
-                if percentage >= 100:
-                    value = '最新版软件下载已完成。'
+            text, title = f'是否从当前版本: {self.model.version} 升级到最新版本: {newest_version}', self.model.name
+            choice, _ = Window(title, [[T(text)], [Yes(button_text='确定'), No(button_text='取消')]],
+                               keep_on_top=True, element_justification='right').read(close=True)
+            if choice:
+                async def update_progress(percentage):
+                    progressbar = self.window['-NOTIFICATION-']
+                    value = f'软件正在下载，进度为 {percentage}%'
                     progressbar.update(value=value)
-                    self.window.write_event_value((E_THREAD, E_DOWNLOAD_END), percentage)
+                    if percentage >= 100:
+                        value = '软件下载已完成'
+                        progressbar.update(value=value)
+                        self.window.write_event_value((E_THREAD, E_DOWNLOAD_END), percentage)
 
-            self.window.start_thread(lambda: installer(update_progress_func=update_progress), ())
+                self.window.start_thread(lambda: installer(update_progress_func=update_progress), ())
+
+    def finish_download(self):
+        text, title = f'最新软件下载已完成，是否立即升级？', self.model.name
+        choice, _ = Window(title, [[T(text)], [Yes(button_text='确定'), No(button_text='取消')]],
+                           keep_on_top=True, element_justification='right').read(close=True)
+        if choice:
+            self.exit()
+        return choice
 
     def about(self, version):
         text = f'\n当前已是最新版本: {version}\nCopyright © 2023–2026 by lidajun\n'

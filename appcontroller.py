@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import contextlib
+import os
+import subprocess
 from PySimpleGUI import EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED, WIN_CLOSE_ATTEMPTED_EVENT, WIN_CLOSED
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
@@ -45,14 +47,14 @@ class AppController(object):
 
     # noinspection PyArgumentList
     def run(self):
-        # with contextlib.suppress(Exception):
-        while self.window:
-            event, values = self.window.read()
-            print(event, values, isinstance(event, tuple), type(event))
-            if event in self.event_functions:
-                self.event_functions[event](event=event, values=values)
-            else:
-                self.event_functions[E_DEFAULT](event=event, values=values)
+        with contextlib.suppress(Exception):
+            while self.window:
+                event, values = self.window.read()
+                print(event, values, isinstance(event, tuple), type(event))
+                if event in self.event_functions:
+                    self.event_functions[event](event=event, values=values)
+                else:
+                    self.event_functions[E_DEFAULT](event=event, values=values)
 
     def refresh(self, **_kwargs):
         self.window.refresh()
@@ -128,9 +130,18 @@ class AppController(object):
         self.window.hide_browser_bookmark()
 
     def check_update(self, **_kwargs):
-        is_new_version = self.updater.is_new_version(self.model.version)
-        installer = self.updater.install
-        self.window.check_update(is_new_version, installer)
+        newest_version = self.updater.get_newest_version()
+        installer = self.updater.installer
+        self.window.check_update(newest_version, installer)
+
+    def finish_download(self, **_kwargs):
+        if self.window.finish_download():
+            print(self.updater.newest_app)
+            cmd = self.updater.newest_app + ' --update_path1 ' + self.updater.newest_app + \
+                ' --update_path2 ' + os.getcwd()
+            print(cmd)
+            subprocess.Popen(cmd)
+            self.destroy()
 
     def about(self, **_kwargs):
         version = self.model.version
@@ -179,7 +190,7 @@ class AppController(object):
         elif isinstance(event, str) and event.endswith('DoubleClick'):
             self.run_app(**kwargs)
         elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
-            self.exit()
+            self.finish_download()
 
     def _init_event_functions(self):
         new_event_func = {}
