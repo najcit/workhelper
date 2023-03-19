@@ -42,7 +42,7 @@ class AppWindow(object):
         show_local = E_SHOW_LOCAL_APPS if not self.model.show_local else E_HIDE_LOCAL_APPS
         show_browser = E_SHOW_BROWSER_BOOKMARKS if not self.model.show_browser else E_HIDE_BROWSER_BOOKMARKS
         menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
-                    [E_EDIT, [E_MANAGE_TAG, E_ADD_TAG]],
+                    [E_EDIT, [E_MANAGE_TAG, E_NEW_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
                     [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW, show_local, show_browser]],
                     [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
@@ -403,12 +403,12 @@ class AppWindow(object):
             self.refresh()
         return result
 
-    def add_app(self, current_tag):
+    def new_app(self, current_tag):
         result = False
-        layout = [[Text('添加目标'), Input(key='TargetPath'), Button('浏览')],
-                  [Text('添加应用'), Input(key='AppName'), Button('图标')],
+        layout = [[Text('新建目标'), Input(key='TargetPath'), Button('浏览')],
+                  [Text('新建应用'), Input(key='AppName'), Button('图标')],
                   [Button('确定'), Button('取消')]]
-        window = Window('添加应用', layout, element_justification='right')
+        window = Window('新建应用', layout, element_justification='right')
         while True:
             event, values = window.read()
             if event == '浏览':
@@ -429,7 +429,7 @@ class AppWindow(object):
                 # print('target', target)
                 # print('link_path', link_path)
                 winshell.CreateShortcut(Path=link_path, Target=target, Icon=(target, 0))
-                popup('成功添加应用' + app_name + '!', no_titlebar=True, keep_on_top=True, auto_close=True,
+                popup('成功新建应用' + app_name + '!', no_titlebar=True, keep_on_top=True, auto_close=True,
                       auto_close_duration=2)
                 result = True
                 break
@@ -549,7 +549,7 @@ class AppWindow(object):
         tab_group = {}
         max_num_per_row = 1 if self.model.show_view == SHOW_LIST else 4
         app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
-        tag_right_click_menu = [[], [E_ADD_TAG, E_RMV_TAG, E_SRT_APP, E_ADD_APP, E_REFRESH]]
+        tag_right_click_menu = [[], [E_NEW_TAG, E_RMV_TAG, E_SRT_APP, E_NEW_APP, E_REFRESH]]
         for tag, apps in self.model.apps.items():
             if not self.model.show_local and tag == LOCAL_APPS:
                 continue

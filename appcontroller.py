@@ -150,9 +150,9 @@ class AppController(object):
         current_tag = kwargs['values'][E_ACTIVE_TAG]
         self.window.rmv_tag(current_tag)
 
-    def add_app(self, **kwargs):
+    def new_app(self, **kwargs):
         current_tag = kwargs['values'][E_ACTIVE_TAG]
-        self.window.add_tag(current_tag)
+        self.window.new_app(current_tag)
 
     def mod_app(self, **_kwargs):
         self.window.mod_app()
@@ -210,11 +210,11 @@ class AppController(object):
             E_ACTIVE_TAG: self.activate_tag,
             E_REFRESH: self.refresh,
             E_MANAGE_TAG: self.manage_tag,
-            E_ADD_TAG: self.new_tag,
+            E_NEW_TAG: self.new_tag,
             E_MOD_TAG: self.mod_tag,
             E_RMV_TAG: self.rmv_tag,
             E_SRT_APP: self.sort_app,
-            E_ADD_APP: self.add_app,
+            E_NEW_APP: self.new_app,
             E_MOD_APP: self.mod_app,
             E_RMV_APP: self.rmv_app,
             E_RUN_APP: self.run_app,
