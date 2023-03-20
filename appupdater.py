@@ -20,7 +20,8 @@ class AppUpdater:
     def installer(self, update_progress_func=None):
         tmp_file_path = tempfile.mkdtemp()
         print(tmp_file_path)
-        shutil.copy('server/workhelper_1.0.1.exe', tmp_file_path)
+        target = os.path.join(tmp_file_path, 'workhelper.exe')
+        shutil.copy('server/workhelper_1.0.1.exe', target)
         self.newest_app = os.path.join(tmp_file_path, 'workhelper.exe')
         for i in range(0, 101):
             percent = i

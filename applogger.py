@@ -8,7 +8,7 @@ class AppLogger(object):
     def __init__(self, filename=APP_LOG):
         self.filename = filename
         self.format = '[%(asctime)s-%(filename)s-%(levelname)s:%(message)s]'
-        self.level = logging.DEBUG
+        self.level = logging.INFO
         self.datefmt = '%Y-%m-%d%I:%M:%S %p'
         logging.basicConfig(filename=filename, format=self.format, level=self.level, datefmt=self.datefmt,
                             filemode='a', encoding='utf-8')

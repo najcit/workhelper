@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
-
+import os.path
 import re
+import shutil
+import subprocess
+import time
+
 import win32con
 import win32gui
 
 from appcontroller import AppController
+from applogger import AppLogger
 from appmodel import AppModel
 from appresource import APP_TITLE
 
@@ -34,6 +39,15 @@ class MyApp:
 
     def run(self):
         self.controller.run()
+
+    @staticmethod
+    def upgrade(app_path, install_path, timeout):
+        AppLogger.info(f'{app_path}, {install_path}, {timeout}')
+        time.sleep(timeout)
+        shutil.copy(app_path, install_path)
+        app_path = os.path.join(install_path,os.path.basename(app_path))
+        cmd = f'{app_path}'
+        subprocess.Popen(cmd)
 
     @staticmethod
     def show(**kwargs):

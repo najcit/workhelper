@@ -140,9 +140,7 @@ class AppController(object):
 
     def finish_download(self, **_kwargs):
         if self.window.finish_download():
-            print(self.updater.newest_app)
-            cmd = self.updater.newest_app + ' --update_path1 ' + self.updater.newest_app + \
-                ' --update_path2 ' + os.getcwd()
+            cmd = f'{self.updater.newest_app} --app_path {self.updater.newest_app} --install_path {os.getcwd()}'
             print(cmd)
             subprocess.Popen(cmd)
             self.destroy()
