@@ -7,4 +7,5 @@ venv/
 *.zip
 *.spec
 *.db
+*.log
 image/local/

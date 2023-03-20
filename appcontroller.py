@@ -4,6 +4,8 @@ import contextlib
 import os
 import subprocess
 from PySimpleGUI import EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED, WIN_CLOSE_ATTEMPTED_EVENT, WIN_CLOSED
+
+from applogger import AppLogger
 from appupdater import AppUpdater
 from appdatabase import AppDatabase
 from appwindow import AppWindow
@@ -17,7 +19,7 @@ class AppController(object):
         self.window = None
         self.updater = None
         self.database = None
-        self.bookmark = None
+        self.logger = None
         self.event_functions = self._init_event_functions()
         self.initialize(model)
 
@@ -33,6 +35,8 @@ class AppController(object):
             self.updater = AppUpdater()
         if not self.database:
             self.database = AppDatabase()
+        if not self.logger:
+            self.logger = AppLogger()
 
     def destroy(self):
         if self.window:

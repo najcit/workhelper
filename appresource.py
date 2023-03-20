@@ -67,6 +67,7 @@ UNKNOWN_BOOKMARKS_ENG = 'Unknown Bookmarks'
 
 APP_ICON = 'workhelper.ico'
 APP_DB = 'workhelper.db'
+APP_LOG = 'workhelper.log'
 APP_VERSION = '1.0.0'
 APP_ROOT = 'root'
 APP_THEME = 'DarkGreen'
