@@ -1,11 +1,13 @@
 .idea/
-demo/
-root/
-test/
 venv/
+image/local/
+root/
+demo/
+test/
+release/
 *.exe
 *.zip
 *.spec
 *.db
 *.log
-image/local/
+*.yml

@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
-import os.path
+"""
+    A simple workstation that can include some self-customization tools
+    can help developers work.
+"""
+import os
 import re
 import shutil
 import subprocess
 import time
-
 import win32con
 import win32gui
-
 from appcontroller import AppController
 from applogger import AppLogger
 from appmodel import AppModel
 from appresource import APP_TITLE
+import click
 
 
 class MyApp:
@@ -61,3 +64,22 @@ class MyApp:
         win32gui.EnumWindows(show_window, APP_TITLE)
         if not MyApp.found_window:
             MyApp(**kwargs).run()
+
+
+@click.command()
+@click.option('--root', default='', type=str, help='the root directory of the application')
+@click.option('--theme', default='', type=str, help='the theme of the application')
+@click.option('--enable_systray', is_flag=True, default=False, help='enable system tray for the application')
+@click.option('--enable_env', is_flag=True, default=True, help='enable environment variable for the application')
+@click.option('--app_path', default='', type=str, help='the newest application file')
+@click.option('--install_path', default='', type=str, help='the install path of the application')
+@click.option('--timeout', default=3, type=int, help='the timeout to install the application')
+def main(root, theme, enable_systray, enable_env, app_path, install_path, timeout):
+    if os.path.isfile(app_path) and os.path.isdir(install_path):
+        MyApp.upgrade(app_path, install_path, timeout)
+    else:
+        MyApp.show(root=root, theme=theme, enable_systray=enable_systray, enable_env=enable_env)
+
+
+if __name__ == '__main__':
+    main()

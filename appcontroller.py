@@ -134,15 +134,15 @@ class AppController(object):
         self.window.hide_browser_bookmark()
 
     def check_update(self, **_kwargs):
-        newest_version = self.updater.get_newest_version()
-        installer = self.updater.installer
-        self.window.check_update(newest_version, installer)
+        newest_version = self.updater.latest_version()
+        downloader = self.updater.downloader
+        self.window.check_update(newest_version, downloader)
 
     def finish_download(self, **_kwargs):
         if self.window.finish_download():
-            cmd = f'{self.updater.newest_app} --app_path {self.updater.newest_app} --install_path {os.getcwd()}'
-            print(cmd)
+            cmd = f'{self.updater.app} --app_path {self.updater.app} --install_path {os.getcwd()}'
             subprocess.Popen(cmd)
+            print(cmd)
             self.destroy()
 
     def about(self, **_kwargs):

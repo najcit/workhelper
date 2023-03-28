@@ -1,30 +1,39 @@
 # -*- coding: utf-8 -*-
 
-import asyncio
 import os
-import shutil
 import tempfile
 import time
 
+import requests
+
+from appresource import APP_EXE
+
 
 class AppUpdater:
-    def __init__(self):
-        self.newest_app = None
+    def __init__(self, url='http://127.0.0.1:5000'):
+        self.url = url
+        self.app = None
 
     def close(self):
         pass
 
-    def get_newest_version(self):
-        return '1.0.1'
+    def latest_version(self):
+        response = requests.get(self.url+'/latest')
+        return response.text
 
-    def installer(self, update_progress_func=None):
+    def downloader(self, update_progress_func=None):
+        if update_progress_func:
+            update_progress_func(1)
         tmp_file_path = tempfile.mkdtemp()
-        print(tmp_file_path)
-        target = os.path.join(tmp_file_path, 'workhelper.exe')
-        shutil.copy('server/workhelper_1.0.1.exe', target)
-        self.newest_app = os.path.join(tmp_file_path, 'workhelper.exe')
-        for i in range(0, 101):
-            percent = i
-            time.sleep(0.01)
-            if update_progress_func:
-                asyncio.run(update_progress_func(percent))
+        file_name = os.path.join(tmp_file_path, APP_EXE)
+        self.app = file_name
+        if update_progress_func:
+            update_progress_func(10)
+        print(file_name)
+        response = requests.get(self.url + '/download', stream=True)
+        if update_progress_func:
+            update_progress_func(70)
+        with open(file_name, 'wb') as f:
+            f.write(response.content)
+        if update_progress_func:
+            update_progress_func(100)
