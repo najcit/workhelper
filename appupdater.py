@@ -2,10 +2,7 @@
 
 import os
 import tempfile
-import time
-
 import requests
-
 from appresource import APP_EXE
 
 
@@ -18,7 +15,7 @@ class AppUpdater:
         pass
 
     def latest_version(self):
-        response = requests.get(self.url+'/latest')
+        response = requests.get(self.url + '/latest')
         return response.text
 
     def downloader(self, update_progress_func=None):

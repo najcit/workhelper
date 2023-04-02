@@ -7,6 +7,7 @@ from appbookmark import AppBookmark
 from applocalapp import AppLocalApp
 from appmyapp import AppMyApp
 from appresource import *
+from appshareapp import AppSharedApp
 
 
 class AppModel(object):
@@ -25,6 +26,7 @@ class AppModel(object):
         self.current_tag = ALL_APPS
         self.search_content = ''
         self.show_local = True
+        self.show_shared = False
         self.show_browser = True
         self.location = None
         self.icons = None
@@ -62,6 +64,8 @@ class AppModel(object):
             self.search_content = kwargs['search_content']
         if 'show_local' in kwargs:
             self.show_local = kwargs['show_local']
+        if 'show_shared' in kwargs:
+            self.show_shared = kwargs['show_shared']
         if 'show_browser' in kwargs:
             self.show_browser = kwargs['show_browser']
         if 'location' in kwargs:
@@ -86,18 +90,24 @@ class AppModel(object):
         }
 
     def init_apps(self):
-        apps_info = {ALL_APPS: [], MY_APPS: [], LOCAL_APPS: [], ALL_BOOKMARKS: []}
+        apps_info = {ALL_APPS: [], MY_APPS: [], LOCAL_APPS: [], SHARED_APPS: [], ALL_BOOKMARKS: []}
 
         my_app = AppMyApp()
-        apps_info[MY_APPS] = my_app.get_my_apps(self.root)
-        apps_info[ALL_APPS] += apps_info[MY_APPS]
+        my_apps_info = my_app.get_apps(self.root)
+        apps_info[MY_APPS] = my_apps_info
+        apps_info[ALL_APPS] += my_apps_info
 
         local_app = AppLocalApp()
-        local_apps_info = local_app.get_installed_apps()
+        local_apps_info = local_app.get_apps()
         apps_info[LOCAL_APPS] = local_apps_info
-        apps_info[ALL_APPS] += apps_info[LOCAL_APPS]
+        apps_info[ALL_APPS] += local_apps_info
 
-        browsers = local_app.get_installed_browsers()
+        shared_app = AppSharedApp()
+        shared_apps_info = shared_app.get_apps()
+        apps_info[SHARED_APPS] = shared_apps_info
+        apps_info[ALL_APPS] += shared_apps_info
+
+        browsers = local_app.get_browsers()
         bookmark = AppBookmark()
         for browser in browsers:
             apps_info[bookmark.name(browser)] = bookmark.get_bookmarks(browser)

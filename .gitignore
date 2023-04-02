@@ -1,10 +1,11 @@
 .idea/
 venv/
 image/local/
-root/
+my/
 demo/
 test/
 release/
+share/
 *.exe
 *.zip
 *.spec

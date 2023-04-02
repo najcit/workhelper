@@ -127,6 +127,12 @@ class AppController(object):
     def hide_local_app(self, **_kwargs):
         self.window.hide_local_app()
 
+    def show_shared_app(self, **_kwargs):
+        self.window.show_shared_app()
+
+    def hide_shared_app(self, **_kwargs):
+        self.window.hide_shared_app()
+
     def show_browser_bookmark(self, **_kwargs):
         self.window.show_browser_bookmark()
 
@@ -173,6 +179,9 @@ class AppController(object):
     def rmv_app(self, **_kwargs):
         self.window.rmv_app()
 
+    def share_app(self, **_kwargs):
+        self.window.share_app()
+
     def open_app_path(self, **_kwargs):
         self.window.open_app_path()
 
@@ -216,6 +225,8 @@ class AppController(object):
             E_SET_WINDOW: self.set_window,
             E_SHOW_LOCAL_APPS: self.show_local_app,
             E_HIDE_LOCAL_APPS: self.hide_local_app,
+            E_SHOW_SHARED_APPS: self.show_shared_app,
+            E_HIDE_SHARED_APPS: self.hide_shared_app,
             E_SHOW_BROWSER_BOOKMARKS: self.show_browser_bookmark,
             E_HIDE_BROWSER_BOOKMARKS: self.hide_browser_bookmark,
             E_SEARCH: self.search,
@@ -230,6 +241,7 @@ class AppController(object):
             E_NEW_APP: self.new_app,
             E_MOD_APP: self.mod_app,
             E_RMV_APP: self.rmv_app,
+            E_SHARE_APP: self.share_app,
             E_RUN_APP: self.run_app,
             E_OPEN_APP_PATH: self.open_app_path,
             E_COPY_APP_PATH: self.copy_app_path,

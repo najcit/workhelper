@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import contextlib
 import copy
 import os
 import random
@@ -8,6 +8,7 @@ import shutil
 import time
 import webbrowser
 import tkinter
+import requests
 import pyperclip
 import validators
 import winshell
@@ -40,11 +41,13 @@ class AppWindow(object):
         show_icon = E_SHOW_ICON_VIEW if self.model.show_view == SHOW_LIST else '!' + E_SHOW_ICON_VIEW
         show_list = E_SHOW_LIST_VIEW if self.model.show_view == SHOW_ICON else '!' + E_SHOW_LIST_VIEW
         show_local = E_SHOW_LOCAL_APPS if not self.model.show_local else E_HIDE_LOCAL_APPS
+        show_shared = E_SHOW_SHARED_APPS if not self.model.show_shared else E_HIDE_SHARED_APPS
         show_browser = E_SHOW_BROWSER_BOOKMARKS if not self.model.show_browser else E_HIDE_BROWSER_BOOKMARKS
         menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
                     [E_EDIT, [E_MANAGE_TAG, E_NEW_TAG]],
                     [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
-                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_FONT, E_SET_WINDOW, show_local, show_browser]],
+                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_LANGUAGE, E_SELECT_FONT, E_SET_WINDOW,
+                                show_local, show_shared, show_browser]],
                     [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
         layout = [[Menu(menu_def, key='-MENU-BAR-')]]
         disable_button = True if self.model.current_tag.find("#") == -1 else False
@@ -69,7 +72,9 @@ class AppWindow(object):
             self.window = Window(self.model.name, layout, enable_close_attempted_event=True,
                                  resizable=True, finalize=True, icon=self.model.icons['window'])
         self.window.set_min_size((800, 400))
-        self.window[self.model.current_tag].select()
+        with contextlib.suppress(Exception):
+            tab = self.window.find_element(self.model.current_tag, silent_on_error=True)
+            tab.select()
         self._bind_hotkeys()
 
         menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
@@ -249,6 +254,12 @@ class AppWindow(object):
 
     def hide_local_app(self):
         self.refresh(show_local=False)
+
+    def show_shared_app(self):
+        self.refresh(show_shared=True)
+
+    def hide_shared_app(self):
+        self.refresh(show_shared=False)
 
     def show_browser_bookmark(self):
         self.refresh(show_browser=True)
@@ -486,6 +497,15 @@ class AppWindow(object):
             self.refresh()
         return result
 
+    def share_app(self):
+        item = self.window.find_element_with_focus()
+        data = item.metadata
+        print(data)
+        files = {'app': open(data['path'], 'rb')}
+        url = 'http://localhost:5000/'+'/share/app/'
+        result = requests.post(url, data=data, files=files)
+        print(result.status_code)
+
     def open_app_path(self):
         item = self.window.find_element_with_focus()
         app_key = item.key
@@ -558,10 +578,12 @@ class AppWindow(object):
         print(time.perf_counter())
         tab_group = {}
         max_num_per_row = 1 if self.model.show_view == SHOW_LIST else 4
-        app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
+        app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_SHARE_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
         tag_right_click_menu = [[], [E_NEW_TAG, E_RMV_TAG, E_SRT_APP, E_NEW_APP, E_REFRESH]]
         for tag, apps in self.model.apps.items():
             if not self.model.show_local and tag == LOCAL_APPS:
+                continue
+            if not self.model.show_shared and tag == SHARED_APPS:
                 continue
             if not self.model.show_browser and tag in [CHROME_BOOKMARKS, EDGE_BOOKMARKS, FIREFOX_BOOKMARKS]:
                 continue
@@ -589,7 +611,7 @@ class AppWindow(object):
                              size=(32, 32), background_color='white', right_click_menu=app_right_click_menu)
                 col_layout.append(icon)
                 button = Text(text=app_name, tooltip=app_name, key=app_key, metadata=app,
-                              size=(30, 1), background_color='white', enable_events=False, border_width=0,
+                              size=(20, 1), background_color='white', enable_events=False, border_width=0,
                               right_click_menu=app_right_click_menu, expand_x=True)
                 col_layout.append(button)
                 if self.model.show_view == SHOW_LIST:

@@ -1,6 +1,6 @@
 import winreg
 
-from appresource import LOCAL_APPS
+from apputil import date_str_to_datetime
 
 
 class AppLocalApp(object):
@@ -8,7 +8,7 @@ class AppLocalApp(object):
     def __init__(self):
         self.apps = []
 
-    def get_installed_apps(self):
+    def get_apps(self):
         self.apps = []
         key_name_list = [r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
                          r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall']
@@ -22,7 +22,8 @@ class AppLocalApp(object):
                 try:
                     app['name'] = winreg.QueryValueEx(subkey, "DisplayName")[0]
                     app['path'] = winreg.QueryValueEx(subkey, "InstallLocation")[0]
-                    app['type'] = 'local'
+                    app['parent'] = 'local'
+                    app['type'] = 'app'
                     if not app['path']:
                         continue
                 except EnvironmentError:
@@ -36,7 +37,7 @@ class AppLocalApp(object):
                 except EnvironmentError:
                     app['icon'] = ''
                 try:
-                    app['time'] = winreg.QueryValueEx(subkey, "InstallDate")[0]
+                    app['time'] = date_str_to_datetime(winreg.QueryValueEx(subkey, "InstallDate")[0])
                 except EnvironmentError:
                     app['time'] = ''
                 try:
@@ -50,9 +51,9 @@ class AppLocalApp(object):
                 self.apps.append(app)
         return self.apps
 
-    def get_installed_browsers(self):
+    def get_browsers(self):
         if not self.apps:
-            self.get_installed_apps()
+            self.get_apps()
         browsers = set()
         for app in self.apps:
             for name in ['firefox', 'chrome', 'edge']:

@@ -16,6 +16,11 @@ def set_env(key, value):
         os.popen(command)
 
 
+def date_str_to_datetime(date_str):
+    formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]} 00:00:00"
+    return formatted_date
+
+
 def timestamp_to_datetime(time_stamp, format_string="%Y-%m-%d %H:%M:%S"):
     time_array = localtime(time_stamp)
     str_date = strftime(format_string, time_array)
@@ -53,6 +58,7 @@ def get_path_time(path):
 
 def formate_time(time):
     return datetime.datetime.fromtimestamp(int(time) / 1000000).strftime('%Y-%m-%d %H:%M:%S')
+
 
 class Registry(object):
 
@@ -94,7 +100,7 @@ class EnvVar(Registry):
         self.refresh()
 
     @staticmethod
-    def refresh(self):
+    def refresh():
         hwnd_broadcast = 0xFFFF
         wm_settingchange = 0x1A
         smto_abortifhung = 0x0002

@@ -3,6 +3,7 @@
     A simple workstation that can include some self-customization tools
     can help developers work.
 """
+import click
 import os
 import re
 import shutil
@@ -11,10 +12,10 @@ import time
 import win32con
 import win32gui
 from appcontroller import AppController
-from applogger import AppLogger
 from appmodel import AppModel
+from appservice import AppService
+from applogger import AppLogger
 from appresource import APP_TITLE
-import click
 
 
 class MyApp:
@@ -48,7 +49,7 @@ class MyApp:
         AppLogger.info(f'{app_path}, {install_path}, {timeout}')
         time.sleep(timeout)
         shutil.copy(app_path, install_path)
-        app_path = os.path.join(install_path,os.path.basename(app_path))
+        app_path = os.path.join(install_path, os.path.basename(app_path))
         cmd = f'{app_path}'
         subprocess.Popen(cmd)
 
@@ -74,9 +75,12 @@ class MyApp:
 @click.option('--app_path', default='', type=str, help='the newest application file')
 @click.option('--install_path', default='', type=str, help='the install path of the application')
 @click.option('--timeout', default=3, type=int, help='the timeout to install the application')
-def main(root, theme, enable_systray, enable_env, app_path, install_path, timeout):
+@click.option('--service', is_flag=True, default=False, help='run as the service')
+def main(root, theme, enable_systray, enable_env, app_path, install_path, timeout, service):
     if os.path.isfile(app_path) and os.path.isdir(install_path):
         MyApp.upgrade(app_path, install_path, timeout)
+    elif service:
+        AppService().run()
     else:
         MyApp.show(root=root, theme=theme, enable_systray=enable_systray, enable_env=enable_env)
 
