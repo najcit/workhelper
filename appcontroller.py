@@ -20,7 +20,7 @@ class AppController(object):
         self.updater = None
         self.database = None
         self.logger = None
-        self.event_functions = self._init_event_functions()
+        self.event_functions = None
         self.initialize(model)
 
     def __del__(self):
@@ -29,6 +29,7 @@ class AppController(object):
     def initialize(self, model):
         self.destroy()
         self.model = model
+        self.init_event_functions()
         if not self.window and self.model:
             self.window = AppWindow(self.model)
         if not self.updater:
@@ -51,10 +52,12 @@ class AppController(object):
 
     # noinspection PyArgumentList
     def run(self):
-        with contextlib.suppress(Exception):
+        # with contextlib.suppress(Exception):
+        if True:
             while self.window:
                 event, values = self.window.read()
-                print(event, values, isinstance(event, tuple), type(event))
+                print(event, values, type(event))
+                print(self.event_functions)
                 if event in self.event_functions:
                     self.event_functions[event](event=event, values=values)
                 else:
@@ -75,7 +78,7 @@ class AppController(object):
 
     def search(self, **kwargs):
         values = kwargs['values']
-        current_tag = values[E_ACTIVE_TAG]
+        current_tag = values[E_ACTIVE_TAG[self.model.lang]]
         search_content = values['-CONTENT-']
         self.window.search(current_tag=current_tag, search_content=search_content)
 
@@ -86,7 +89,7 @@ class AppController(object):
 
     def activate_tag(self, **kwargs):
         values = kwargs['values']
-        current_tag = values[E_ACTIVE_TAG]
+        current_tag = values[E_ACTIVE_TAG[self.model.lang]]
         self.window.activate_tag(current_tag)
 
     def select_app(self, **kwargs):
@@ -114,6 +117,9 @@ class AppController(object):
 
     def select_theme(self, **_kwargs):
         self.window.select_theme()
+
+    def select_language(self, **_kwargs):
+        self.window.select_language()
 
     def select_font(self, **_kwargs):
         self.window.select_font()
@@ -162,15 +168,15 @@ class AppController(object):
         self.window.new_tag()
 
     def mod_tag(self, **kwargs):
-        current_tag = kwargs['values'][E_ACTIVE_TAG]
+        current_tag = kwargs['values'][E_ACTIVE_TAG[self.model.lang]]
         self.window.mod_tag(current_tag)
 
     def rmv_tag(self, **kwargs):
-        current_tag = kwargs['values'][E_ACTIVE_TAG]
+        current_tag = kwargs['values'][E_ACTIVE_TAG[self.model.lang]]
         self.window.rmv_tag(current_tag)
 
     def new_app(self, **kwargs):
-        current_tag = kwargs['values'][E_ACTIVE_TAG]
+        current_tag = kwargs['values'][E_ACTIVE_TAG[self.model.lang]]
         self.window.new_app(current_tag)
 
     def mod_app(self, **_kwargs):
@@ -200,56 +206,57 @@ class AppController(object):
             self.select_app(**kwargs)
         elif isinstance(event, str) and event.endswith('DoubleClick'):
             self.run_app(**kwargs)
-        elif isinstance(event, tuple) and event == (E_THREAD, E_DOWNLOAD_END):
+        elif isinstance(event, tuple) and event == (E_DOWNLOAD_KEY, E_DOWNLOAD_END):
             self.finish_download()
 
-    def _init_event_functions(self):
-        new_event_func = {}
+    def init_event_functions(self):
+        lang = self.model.lang
+        self.event_functions = {}
         event_func = {
             EVENT_SYSTEM_TRAY_ICON_DOUBLE_CLICKED: self.show,
             WIN_CLOSE_ATTEMPTED_EVENT: self.attempt_exit,
             WIN_CLOSED: self.exit,
-            E_SYSTRAY_SHOW: self.show,
-            E_SYSTRAY_HIDE: self.attempt_exit,
-            E_SYSTRAY_QUIT: self.exit,
-            E_QUIT: self.exit,
-            E_CHECK_UPDATE: self.check_update,
-            E_ABOUT: self.about,
-            E_IMPORT_APPS_INFO: self.import_app_info,
-            E_EXPORT_APPS_INFO: self.export_app_info,
-            E_SHOW_ICON_VIEW: self.show_view_icon,
-            E_SHOW_LIST_VIEW: self.show_view_list,
-            E_SELECT_ROOT: self.select_root,
-            E_SELECT_THEME: self.select_theme,
-            E_SELECT_FONT: self.select_font,
-            E_SET_WINDOW: self.set_window,
-            E_SHOW_LOCAL_APPS: self.show_local_app,
-            E_HIDE_LOCAL_APPS: self.hide_local_app,
-            E_SHOW_SHARED_APPS: self.show_shared_app,
-            E_HIDE_SHARED_APPS: self.hide_shared_app,
-            E_SHOW_BROWSER_BOOKMARKS: self.show_browser_bookmark,
-            E_HIDE_BROWSER_BOOKMARKS: self.hide_browser_bookmark,
-            E_SEARCH: self.search,
-            E_RETURN: self.back,
-            E_ACTIVE_TAG: self.activate_tag,
-            E_REFRESH: self.refresh,
-            E_MANAGE_TAG: self.manage_tag,
-            E_NEW_TAG: self.new_tag,
-            E_MOD_TAG: self.mod_tag,
-            E_RMV_TAG: self.rmv_tag,
-            E_SRT_APP: self.sort_app,
-            E_NEW_APP: self.new_app,
-            E_MOD_APP: self.mod_app,
-            E_RMV_APP: self.rmv_app,
-            E_SHARE_APP: self.share_app,
-            E_RUN_APP: self.run_app,
-            E_OPEN_APP_PATH: self.open_app_path,
-            E_COPY_APP_PATH: self.copy_app_path,
+            E_SYSTRAY_SHOW[lang]: self.show,
+            E_SYSTRAY_HIDE[lang]: self.attempt_exit,
+            E_SYSTRAY_QUIT[lang]: self.exit,
+            E_QUIT[lang]: self.exit,
+            E_CHECK_UPDATE[lang]: self.check_update,
+            E_ABOUT[lang]: self.about,
+            E_IMPORT_APPS_INFO[lang]: self.import_app_info,
+            E_EXPORT_APPS_INFO[lang]: self.export_app_info,
+            E_SHOW_ICON_VIEW[lang]: self.show_view_icon,
+            E_SHOW_LIST_VIEW[lang]: self.show_view_list,
+            E_SELECT_ROOT[lang]: self.select_root,
+            E_SELECT_THEME[lang]: self.select_theme,
+            E_SELECT_LANGUAGE[lang]: self.select_language,
+            E_SELECT_FONT[lang]: self.select_font,
+            E_SET_WINDOW[lang]: self.set_window,
+            E_SHOW_LOCAL_APPS[lang]: self.show_local_app,
+            E_HIDE_LOCAL_APPS[lang]: self.hide_local_app,
+            E_SHOW_SHARED_APPS[lang]: self.show_shared_app,
+            E_HIDE_SHARED_APPS[lang]: self.hide_shared_app,
+            E_SHOW_BROWSER_BOOKMARKS[lang]: self.show_browser_bookmark,
+            E_HIDE_BROWSER_BOOKMARKS[lang]: self.hide_browser_bookmark,
+            E_SEARCH[lang]: self.search,
+            E_RETURN[lang]: self.back,
+            E_ACTIVE_TAG[lang]: self.activate_tag,
+            E_REFRESH[lang]: self.refresh,
+            E_MANAGE_TAG[lang]: self.manage_tag,
+            E_NEW_TAG[lang]: self.new_tag,
+            E_MOD_TAG[lang]: self.mod_tag,
+            E_RMV_TAG[lang]: self.rmv_tag,
+            E_SRT_APP[lang]: self.sort_app,
+            E_NEW_APP[lang]: self.new_app,
+            E_MOD_APP[lang]: self.mod_app,
+            E_RMV_APP[lang]: self.rmv_app,
+            E_SHARE_APP[lang]: self.share_app,
+            E_RUN_APP[lang]: self.run_app,
+            E_OPEN_APP_PATH[lang]: self.open_app_path,
+            E_COPY_APP_PATH[lang]: self.copy_app_path,
             E_DEFAULT: self.default_action,
         }
         for key, value in event_func.items():
             if key and '&' in key:
-                new_event_func[key.replace('&', '')] = value
+                self.event_functions[key.replace('&', '')] = value
             else:
-                new_event_func[key] = value
-        return new_event_func
+                self.event_functions[key] = value

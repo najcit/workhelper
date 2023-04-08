@@ -38,27 +38,30 @@ class AppWindow(object):
         self.model.initialize(**kwargs)
         set_theme(self.model.theme)
         set_options(font=self.model.font)
-        show_icon = E_SHOW_ICON_VIEW if self.model.show_view == SHOW_LIST else '!' + E_SHOW_ICON_VIEW
-        show_list = E_SHOW_LIST_VIEW if self.model.show_view == SHOW_ICON else '!' + E_SHOW_LIST_VIEW
-        show_local = E_SHOW_LOCAL_APPS if not self.model.show_local else E_HIDE_LOCAL_APPS
-        show_shared = E_SHOW_SHARED_APPS if not self.model.show_shared else E_HIDE_SHARED_APPS
-        show_browser = E_SHOW_BROWSER_BOOKMARKS if not self.model.show_browser else E_HIDE_BROWSER_BOOKMARKS
-        menu_def = [[E_FILE, [E_IMPORT_APPS_INFO, E_EXPORT_APPS_INFO, E_QUIT]],
-                    [E_EDIT, [E_MANAGE_TAG, E_NEW_TAG]],
-                    [E_VIEW, [show_icon, show_list, E_SRT_APP, E_REFRESH]],
-                    [E_OPTION, [E_SELECT_ROOT, E_SELECT_THEME, E_SELECT_LANGUAGE, E_SELECT_FONT, E_SET_WINDOW,
-                                show_local, show_shared, show_browser]],
-                    [E_HELP, [E_CHECK_UPDATE, E_ABOUT]]]
+        lang = self.model.lang
+        show_icon = E_SHOW_ICON_VIEW[lang] if self.model.show_view == SHOW_LIST else '!' + E_SHOW_ICON_VIEW[lang]
+        show_list = E_SHOW_LIST_VIEW[lang] if self.model.show_view == SHOW_ICON else '!' + E_SHOW_LIST_VIEW[lang]
+        show_local = E_SHOW_LOCAL_APPS[lang] if not self.model.show_local else E_HIDE_LOCAL_APPS[lang]
+        show_shared = E_SHOW_SHARED_APPS[lang] if not self.model.show_shared else E_HIDE_SHARED_APPS[lang]
+        show_browser = E_SHOW_BROWSER_BOOKMARKS[lang] if not self.model.show_browser else E_HIDE_BROWSER_BOOKMARKS[lang]
+        menu_def = [[E_FILE[lang], [E_IMPORT_APPS_INFO[lang], E_EXPORT_APPS_INFO[lang], E_QUIT[lang]]],
+                    [E_EDIT[lang], [E_MANAGE_TAG[lang], E_NEW_TAG[lang]]],
+                    [E_VIEW[lang], [show_icon, show_list, E_SRT_APP[lang], E_REFRESH[lang]]],
+                    [E_OPTION[lang],
+                     [E_SELECT_ROOT[lang], E_SELECT_THEME[lang], E_SELECT_LANGUAGE[lang],
+                      E_SELECT_FONT[lang], E_SET_WINDOW[lang],
+                      show_local, show_shared, show_browser]],
+                    [E_HELP[lang], [E_CHECK_UPDATE[lang], E_ABOUT[lang]]]]
         layout = [[Menu(menu_def, key='-MENU-BAR-')]]
         disable_button = True if self.model.current_tag.find("#") == -1 else False
-        col_layout = [[Button(image_filename=self.model.icons['return'], key=E_RETURN, disabled=disable_button,
-                              tooltip=E_RETURN),
+        col_layout = [[Button(image_filename=self.model.icons['return'], key=E_RETURN_ENG, disabled=disable_button,
+                              tooltip=E_RETURN[lang]),
                        Input(default_text=self.model.current_tag, key='-CURRENT-TAG-', size=(15, 1), disabled=True,
                              expand_x=True, expand_y=True),
                        Input(default_text=self.model.search_content, key='-CONTENT-', expand_x=True, expand_y=True,
                              enable_events=False),
-                       Button(image_filename=self.model.icons['search'], key=E_SEARCH, bind_return_key=True,
-                              tooltip=E_SEARCH)
+                       Button(image_filename=self.model.icons['search'], key=E_SEARCH_ENG, bind_return_key=True,
+                              tooltip=E_SEARCH[lang])
                        ]]
         layout += [[Column(col_layout, expand_x=True)]]
         layout += self._init_content()
@@ -77,7 +80,7 @@ class AppWindow(object):
             tab.select()
         self._bind_hotkeys()
 
-        menu = [[], [E_SYSTRAY_SHOW, E_SYSTRAY_HIDE, E_SYSTRAY_QUIT]]
+        menu = [[], [E_SYSTRAY_SHOW[lang], E_SYSTRAY_HIDE[lang], E_SYSTRAY_QUIT[lang]]]
         if self.model.enable_systray and self.window:
             self.systray = SystemTray(menu, icon=self.model.icon, window=self.window, tooltip=self.model.name,
                                       single_click_events=False)
@@ -132,7 +135,7 @@ class AppWindow(object):
             self.model.current_tag = current_tag
             self.window['-CURRENT-TAG-'].update(value=current_tag)
         disabled = True if current_tag.find('#') == -1 else False
-        self.window[E_RETURN].update(disabled=disabled)
+        self.window[E_RETURN[self.model.lang]].update(disabled=disabled)
 
     def select_app(self, app_key):
         self.window[app_key].set_focus()
@@ -212,6 +215,17 @@ class AppWindow(object):
             set_env('MY_THEME', theme)
             self.refresh(theme=theme)
 
+    def select_language(self):
+        title, text, value_list = '设置语言', '语言', [LANG_CHN, LANG_ENG]
+        event, values = Window(title, [[T(text), Combo(value_list, default_value=self.model.lang, key='-LANG-COMBO-')],
+                                       [Yes(button_text='确定'), No(button_text='取消')]],
+                               keep_on_top=True, element_justification='right').read(close=True)
+        if event == '确定':
+            lang = values['-LANG-COMBO-']
+            print(lang, self.model.lang)
+            if lang != self.model.lang:
+                self.refresh(lang=lang)
+
     def select_font(self):
         font_families = tkinter.font.families()
         size_families = [i for i in range(1, 26)]
@@ -283,7 +297,7 @@ class AppWindow(object):
                     if percentage >= 100:
                         value = '软件下载已完成'
                         progressbar.update(value=value)
-                        self.window.write_event_value((E_THREAD, E_DOWNLOAD_END), percentage)
+                        self.window.write_event_value((E_DOWNLOAD_KEY, E_DOWNLOAD_END), percentage)
 
                 self.window.start_thread(lambda: downloader(update_progress_func=update_progress), ())
 
@@ -500,11 +514,12 @@ class AppWindow(object):
     def share_app(self):
         item = self.window.find_element_with_focus()
         data = item.metadata
-        print(data)
+        # print(data)
         files = {'app': open(data['path'], 'rb')}
-        url = 'http://localhost:5000/'+'/share/app/'
+        url = 'http://localhost:5000/' + '/share/app/'
         result = requests.post(url, data=data, files=files)
-        print(result.status_code)
+        # print(result.status_code)
+        return result.status_code
 
     def open_app_path(self):
         item = self.window.find_element_with_focus()
@@ -576,16 +591,18 @@ class AppWindow(object):
 
     def _init_content(self):
         print(time.perf_counter())
+        lang = self.model.lang
         tab_group = {}
         max_num_per_row = 1 if self.model.show_view == SHOW_LIST else 4
-        app_right_click_menu = [[], [E_RUN_APP, E_MOD_APP, E_RMV_APP, E_SHARE_APP, E_OPEN_APP_PATH, E_COPY_APP_PATH]]
-        tag_right_click_menu = [[], [E_NEW_TAG, E_RMV_TAG, E_SRT_APP, E_NEW_APP, E_REFRESH]]
+        app_right_click_menu = [[], [E_RUN_APP[lang], E_MOD_APP[lang], E_RMV_APP[lang], E_SHARE_APP[lang],
+                                     E_OPEN_APP_PATH[lang], E_COPY_APP_PATH[lang]]]
+        tag_right_click_menu = [[], [E_NEW_TAG[lang], E_RMV_TAG[lang], E_SRT_APP[lang], E_NEW_APP[lang], E_REFRESH[lang]]]
         for tag, apps in self.model.apps.items():
-            if not self.model.show_local and tag == LOCAL_APPS:
+            if not self.model.show_local and tag == LOCAL_APPS[lang]:
                 continue
-            if not self.model.show_shared and tag == SHARED_APPS:
+            if not self.model.show_shared and tag == SHARED_APPS[lang]:
                 continue
-            if not self.model.show_browser and tag in [CHROME_BOOKMARKS, EDGE_BOOKMARKS, FIREFOX_BOOKMARKS]:
+            if not self.model.show_browser and tag in [CHROME_BOOKMARKS[lang], EDGE_BOOKMARKS[lang], FIREFOX_BOOKMARKS[lang]]:
                 continue
             tag, apps = self._get_apps_of_current_tag(tag, apps)
             tab_layout = []
@@ -637,14 +654,15 @@ class AppWindow(object):
                                  right_click_menu=tag_right_click_menu)
                              for tab_key, tab_layout in tab_group.items()]]
         print(time.perf_counter())
-        return [[TabGroup(tab_group_layout, key=E_ACTIVE_TAG, expand_x=True, expand_y=True,
+        return [[TabGroup(tab_group_layout, key=E_ACTIVE_TAG[lang], expand_x=True, expand_y=True,
                           enable_events=True, right_click_menu=tag_right_click_menu)]]
 
     def _bind_hotkeys(self):
+        lang = self.model.lang
         for tag, apps in self.model.apps.items():
-            if not self.model.show_local and tag == LOCAL_APPS:
+            if not self.model.show_local and tag == LOCAL_APPS[lang]:
                 continue
-            if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS, CHROME_BOOKMARKS, EDGE_BOOKMARKS]:
+            if not self.model.show_browser and tag in [FIREFOX_BOOKMARKS[lang], CHROME_BOOKMARKS[lang], EDGE_BOOKMARKS[lang]]:
                 continue
             tag, apps = self._get_apps_of_current_tag(tag, apps)
             for app in apps:

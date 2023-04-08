@@ -13,17 +13,18 @@ from appshareapp import AppSharedApp
 class AppModel(object):
 
     def __init__(self, **kwargs):
-        self.name = APP_TITLE
+        self.lang = kwargs['lang'] if 'lang' in kwargs else LANG_ENG
+        self.name = APP_TITLE[self.lang]
+        self.font = APP_FONT[self.lang]
         self.version = APP_VERSION
         self.root = APP_ROOT
         self.theme = APP_THEME
-        self.font = APP_FONT
         self.enable_systray = kwargs['enable_systray'] if 'enable_systray' in kwargs else False
         self.enable_env = kwargs['enable_env'] if 'enable_env' in kwargs else False
         self.auto_update = kwargs['auto_update'] if 'auto_update' in kwargs else False
         self.show_view = SHOW_ICON
         self.sort_order = SORT_DEFAULT
-        self.current_tag = ALL_APPS
+        self.current_tag = ALL_APPS[self.lang]
         self.search_content = ''
         self.show_local = True
         self.show_shared = False
@@ -32,7 +33,7 @@ class AppModel(object):
         self.icons = None
         self.apps = None
         self.browsers = None
-        self.event_hotkeys = self.init_event_hotkeys()
+        self.event_hotkeys = None
         if self.enable_env:
             self.root = os.getenv('MY_ROOT', APP_ROOT)
             self.theme = os.getenv('MY_THEME', APP_THEME)
@@ -42,12 +43,19 @@ class AppModel(object):
                 self.font = (font[0], font[1])
             else:
                 self.font = font
+        self.init_event_hotkeys()
         self.initialize(**kwargs)
 
     def __del__(self):
         self.destroy()
 
     def initialize(self, **kwargs):
+        if 'lang' in kwargs:
+            self.lang = kwargs['lang'] or LANG_CHN
+            self.name = APP_TITLE[self.lang]
+            self.font = APP_FONT[self.lang]
+            self.current_tag = ALL_APPS[self.lang]
+            self.apps = self.init_apps()
         if 'root' in kwargs:
             self.root = kwargs['root'] or APP_ROOT
         if 'theme' in kwargs:
@@ -90,44 +98,45 @@ class AppModel(object):
         }
 
     def init_apps(self):
-        apps_info = {ALL_APPS: [], MY_APPS: [], LOCAL_APPS: [], SHARED_APPS: [], ALL_BOOKMARKS: []}
+        apps_info = {ALL_APPS[self.lang]: [], MY_APPS[self.lang]: [],
+                     LOCAL_APPS[self.lang]: [], SHARED_APPS[self.lang]: [],
+                     ALL_BOOKMARKS[self.lang]: []}
 
         my_app = AppMyApp()
         my_apps_info = my_app.get_apps(self.root)
-        apps_info[MY_APPS] = my_apps_info
-        apps_info[ALL_APPS] += my_apps_info
+        apps_info[MY_APPS[self.lang]] = my_apps_info
+        apps_info[ALL_APPS[self.lang]] += my_apps_info
 
         local_app = AppLocalApp()
         local_apps_info = local_app.get_apps()
-        apps_info[LOCAL_APPS] = local_apps_info
-        apps_info[ALL_APPS] += local_apps_info
+        apps_info[LOCAL_APPS[self.lang]] = local_apps_info
+        apps_info[ALL_APPS[self.lang]] += local_apps_info
 
         shared_app = AppSharedApp()
         shared_apps_info = shared_app.get_apps()
-        apps_info[SHARED_APPS] = shared_apps_info
-        apps_info[ALL_APPS] += shared_apps_info
+        apps_info[SHARED_APPS[self.lang]] = shared_apps_info
+        apps_info[ALL_APPS[self.lang]] += shared_apps_info
 
         browsers = local_app.get_browsers()
-        bookmark = AppBookmark()
+        bookmark = AppBookmark(self.lang)
         for browser in browsers:
             apps_info[bookmark.name(browser)] = bookmark.get_bookmarks(browser)
-            apps_info[ALL_BOOKMARKS] += apps_info[bookmark.name(browser)]
+            apps_info[ALL_BOOKMARKS[self.lang]] += apps_info[bookmark.name(browser)]
 
         return apps_info
 
-    @staticmethod
-    def init_event_hotkeys():
-        return {
-            E_SYSTRAY_QUIT: ['<Control-q>', '<Control-Q>'],
-            E_CHECK_UPDATE: ['<Control-u>', '<Control-U>'],
-            E_ABOUT: ['<Control-a>', '<Control-A>'],
-            E_IMPORT_APPS_INFO: ['<Control-i>', '<Control-I>'],
-            E_EXPORT_APPS_INFO: ['<Control-x>', '<Control-X>'],
-            E_SELECT_ROOT: ['<Control-o>', '<Control-O>'],
-            E_SELECT_THEME: ['<Control-t>', '<Control-T>'],
-            E_REFRESH: ['<F5>'],
-            E_MANAGE_TAG: ['<Control-m>', '<Control-M>'],
-            E_RUN_APP: ['<Control-r>', '<Control-R>'],
-            E_OPEN_APP_PATH: ['<Control-p>', '<Control-P>'],
-            E_COPY_APP_PATH: ['<Control-c>', '<Control-C>'],
+    def init_event_hotkeys(self):
+        self.event_hotkeys = {
+            E_SYSTRAY_QUIT[self.lang]: ['<Control-q>', '<Control-Q>'],
+            E_CHECK_UPDATE[self.lang]: ['<Control-u>', '<Control-U>'],
+            E_ABOUT[self.lang]: ['<Control-a>', '<Control-A>'],
+            E_IMPORT_APPS_INFO[self.lang]: ['<Control-i>', '<Control-I>'],
+            E_EXPORT_APPS_INFO[self.lang]: ['<Control-x>', '<Control-X>'],
+            E_SELECT_ROOT[self.lang]: ['<Control-o>', '<Control-O>'],
+            E_SELECT_THEME[self.lang]: ['<Control-t>', '<Control-T>'],
+            E_REFRESH[self.lang]: ['<F5>'],
+            E_MANAGE_TAG[self.lang]: ['<Control-m>', '<Control-M>'],
+            E_RUN_APP[self.lang]: ['<Control-r>', '<Control-R>'],
+            E_OPEN_APP_PATH[self.lang]: ['<Control-p>', '<Control-P>'],
+            E_COPY_APP_PATH[self.lang]: ['<Control-c>', '<Control-C>'],
         }

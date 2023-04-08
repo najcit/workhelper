@@ -15,7 +15,7 @@ from appcontroller import AppController
 from appmodel import AppModel
 from appservice import AppService
 from applogger import AppLogger
-from appresource import APP_TITLE
+from appresource import APP_TITLE, LANG_CHN, LANG_ENG
 
 
 class MyApp:
@@ -62,7 +62,9 @@ class MyApp:
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
                 MyApp.found_window = True
 
-        win32gui.EnumWindows(show_window, APP_TITLE)
+        win32gui.EnumWindows(show_window, APP_TITLE[LANG_CHN])
+        if not MyApp.found_window:
+            win32gui.EnumWindows(show_window, APP_TITLE[LANG_ENG])
         if not MyApp.found_window:
             MyApp(**kwargs).run()
 

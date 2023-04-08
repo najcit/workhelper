@@ -11,11 +11,11 @@ from apputil import formate_time
 
 class AppBookmark(object):
 
-    def __init__(self):
+    def __init__(self, lang):
         self.bookmark_name = {
-            'firefox': FIREFOX_BOOKMARKS,
-            'chrome': CHROME_BOOKMARKS,
-            'edge': EDGE_BOOKMARKS,
+            'firefox': FIREFOX_BOOKMARKS[lang],
+            'chrome': CHROME_BOOKMARKS[lang],
+            'edge': EDGE_BOOKMARKS[lang],
         }
         self.bookmarks = {
             'firefox': self.get_firefox_bookmarks,
@@ -51,7 +51,7 @@ class AppBookmark(object):
             for row in cursor:
                 menu = {'id': row[0],
                         'name': row[1],
-                        'path': os.path.join(FIREFOX_BOOKMARKS, row[1]),
+                        'path': row[1],
                         'icon': 'default',
                         'type': 'category',
                         'time': formate_time(row[2])}
